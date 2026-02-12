@@ -9,7 +9,7 @@ from loguru import logger
 from scrapers.olx_scraper import OLXScraper
 from scrapers.avtoelon_scraper import AvtoelonScraper
 from database.database import async_session_maker
-from database.crud import listing_exists, create_scraped_listing
+from database.crud import create_scraped_listing
 
 
 class ScraperManager:
