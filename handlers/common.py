@@ -139,3 +139,12 @@ async def need_phone_handler(callback: CallbackQuery):
         "Bog'lanish uchun avval telefon raqamingizni yuboring",
         show_alert=True
     )
+
+@router.message(F.text == "📊 Narxni baholash")
+async def price_estimate_placeholder(message: Message):
+    """Placeholder for price estimate"""
+    await message.answer(
+        "🛠 <b>Bu bo'lim tez orada ishga tushadi!</b>\n\n"
+        "Hozircha siz <b>'📉 Arzon variantlar'</b> bo'limi orqali tayyor variantlarni ko'rishingiz mumkin.",
+        parse_mode="HTML"
+    )

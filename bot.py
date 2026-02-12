@@ -73,15 +73,27 @@ async def main():
     dp.update.middleware(BlockCheckMiddleware())
     
     # Register routers
-    dp.include_router(common.router)
-    dp.include_router(catalog.router)
-    dp.include_router(subscriptions.router)
-    dp.include_router(favorites.router)  # NEW
-    dp.include_router(reviews.router)    # NEW
-    dp.include_router(gallery.router)    # NEW
-    dp.include_router(admin.router)
-    dp.include_router(crm.router)        # NEW
-    dp.include_router(sell.router)       # NEW
+    from handlers.common import router as common_router
+    from handlers.catalog import router as catalog_router
+    from handlers.gallery import router as gallery_router
+    from handlers.favorites import router as favorites_router
+    from handlers.reviews import router as reviews_router
+    from handlers.crm import router as crm_router
+    from handlers.admin import router as admin_router
+    from handlers.sell import router as sell_router
+    from handlers.subscriptions import router as subscriptions_router
+    from handlers.analytics import router as analytics_router
+    
+    dp.include_router(common_router)
+    dp.include_router(catalog_router)
+    dp.include_router(gallery_router)
+    dp.include_router(favorites_router)
+    dp.include_router(reviews_router)
+    dp.include_router(crm_router)
+    dp.include_router(admin_router)
+    dp.include_router(sell_router)
+    dp.include_router(subscriptions_router)
+    dp.include_router(analytics_router)       # NEW
     
     logger.info("Handlers registered")
     

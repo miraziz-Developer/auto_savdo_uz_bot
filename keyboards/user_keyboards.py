@@ -6,28 +6,33 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 
 
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
-    """Main menu keyboard for users"""
+    """Main menu keyboard for Flipper User"""
     builder = ReplyKeyboardBuilder()
+    
+    # Row 1: Core Actions
     builder.row(
-        KeyboardButton(text="🚗 Katalog"),
-        KeyboardButton(text="🔍 Qidiruv")
+        KeyboardButton(text="🔍 Qidiruv"),
+        KeyboardButton(text="➕ E'lon berish")
     )
+    
+    # Row 2: Inventory & Market
     builder.row(
-        KeyboardButton(text="🔔 Obuna"),
+        KeyboardButton(text="📝 Mening e'lonlarim"),
+        KeyboardButton(text="📉 Arzon variantlar")
+    )
+    
+    # Row 3: Updates
+    builder.row(
+        KeyboardButton(text="🔔 Obunalar"),
         KeyboardButton(text="❤️ Sevimlilar")
     )
+    
+    # Row 4: Tools
     builder.row(
-        KeyboardButton(text="🚗 Mashina sotish"),
-        KeyboardButton(text="📝 Mening e'lonlarim")
-    )
-    builder.row(
-        KeyboardButton(text="🔔 Obuna"),
-        KeyboardButton(text="📊 Mening obunalarim")
-    )
-    builder.row(
-        KeyboardButton(text="❤️ Sevimlilar"),
+        KeyboardButton(text="📊 Statistika"),
         KeyboardButton(text="ℹ️ Yordam")
     )
+    
     return builder.as_markup(resize_keyboard=True)
 
 
@@ -156,3 +161,15 @@ def cancel_keyboard() -> ReplyKeyboardMarkup:
     builder = ReplyKeyboardBuilder()
     builder.row(KeyboardButton(text="❌ Bekor qilish"))
     return builder.as_markup(resize_keyboard=True)
+
+
+def scraped_listing_keyboard(url: str, source: str) -> InlineKeyboardMarkup:
+    """Keyboard for scraped listings"""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text=f"🌐 {source.upper()} da ko'rish", url=url)
+    )
+    builder.row(
+        InlineKeyboardButton(text="◀️ Orqaga", callback_data="back:catalog")
+    )
+    return builder.as_markup()

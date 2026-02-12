@@ -717,3 +717,59 @@ async def find_similar_listing(session: AsyncSession, brand: str, model: str, ye
     )
     return result.scalar_one_or_none()
 
+
+async def get_good_deals(session: AsyncSession, limit: int = 10) -> List[ScrapedListing]:
+    """Get top rated good deals"""
+    stmt = (
+        select(ScrapedListing)
+        .where(
+             ScrapedListing.is_good_deal == True,
+             ScrapedListing.scraped_at >= datetime.utcnow() - timedelta(days=5)
+        )
+        .order_by(ScrapedListing.deal_score.desc())
+        .limit(limit)
+    )
+    result = await session.execute(stmt)
+    return result.scalars().all()
+
+
+async def get_market_stats(session: AsyncSession) -> dict:
+    """Get overall market statistics"""
+    stats = {
+        'total_listings': 0,
+        'new_today': 0,
+        'avg_prices': {}
+    }
+    
+    # Total count
+    total_res = await session.execute(
+        select(func.count(ScrapedListing.id))
+        .where(ScrapedListing.scraped_at >= datetime.utcnow() - timedelta(days=7))
+    )
+    stats['total_listings'] = total_res.scalar_one_or_none() or 0
+    
+    # New today
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    new_res = await session.execute(
+        select(func.count(ScrapedListing.id)).where(ScrapedListing.scraped_at >= today_start)
+    )
+    stats['new_today'] = new_res.scalar_one_or_none() or 0
+    
+    # Avg price for popular models (Gentra, Cobalt, Nexia 3, Spark, Malibu 2)
+    models = ['gentra', 'cobalt', 'nexia', 'spark', 'malibu']
+    for m in models:
+        avg_res = await session.execute(
+            select(func.avg(ScrapedListing.price)).where(
+                and_(
+                    func.lower(ScrapedListing.model).like(f"%{m}%"),
+                    ScrapedListing.scraped_at >= datetime.utcnow() - timedelta(days=7),
+                    ScrapedListing.price > 1000
+                )
+            )
+        )
+        avg_val = avg_res.scalar_one_or_none()
+        if avg_val:
+            stats['avg_prices'][m.capitalize()] = float(avg_val)
+            
+    return stats
+

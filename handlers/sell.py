@@ -16,7 +16,7 @@ from config import settings
 
 router = Router()
 
-@router.message(F.text == "🚗 Mashina sotish")
+@router.message(F.text.in_(["🚗 Mashina sotish", "➕ E'lon berish"]))
 async def start_car_sell(message: Message, state: FSMContext):
     await state.set_state(CarSellStates.choosing_method)
     

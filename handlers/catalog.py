@@ -10,7 +10,8 @@ from database.database import async_session_maker
 from database.crud import get_cars, get_car_by_id, increment_car_views, update_user_phone
 from keyboards.user_keyboards import (
     car_filters_keyboard, car_detail_keyboard, 
-    pagination_keyboard, request_phone_keyboard, main_menu_keyboard
+    pagination_keyboard, request_phone_keyboard, main_menu_keyboard,
+    scraped_listing_keyboard
 )
 from states.states import CarSearchStates
 
@@ -257,7 +258,71 @@ async def car_share_handler(callback: CallbackQuery):
     bot_username = "avtosavdo_bot"  # Replace with actual bot username
     share_link = f"https://t.me/{bot_username}?start=car_{car_id}"
     
+    
     await callback.answer()
     await callback.message.answer(
         f"🔗 Bu moshinani ulashish uchun link:\n\n{share_link}"
     )
+
+
+# --- CHEAP DEALS (FLIPPER MODE) ---
+@router.message(F.text == "📉 Arzon variantlar")
+async def cheap_deals_handler(message: Message):
+    """Show cheap/good deals from market"""
+    from database.crud import get_good_deals
+    
+    async with async_session_maker() as session:
+        deals = await get_good_deals(session, limit=10)
+    
+    if not deals:
+        await message.answer(
+            "😢 Hozircha super chegirmalar topilmadi.\n"
+            "Bozorni kuzatib boryapmiz, keyinroq qaytib ko'ring!"
+        )
+        return
+
+    # Show first deal as a "Feed" style
+    # Or show gallery? For now, show the best one first.
+    deal = deals[0]
+    await show_scraped_deal(message, deal)
+
+
+async def show_scraped_deal(message: Message, deal):
+    """Display a scraped listing"""
+    score = getattr(deal, 'deal_score', 50)
+    if not score: score = 50
+    emoji = "🔥" if score > 80 else "⭐"
+    
+    desc_short = (deal.description or "")[:150].replace('\n', ' ')
+    
+    text = f"""
+{emoji} <b>DEAL BALLI: {score}/100</b>
+📉 <b>ARZON VARIANT!</b>
+
+🚘 <b>{deal.brand} {deal.model}</b> ({deal.year})
+💰 Narxi: <b>{deal.price:,.0f} $</b>
+
+🛣 Probeg: <b>{deal.mileage} km</b>
+⚙️ Karobka: <b>{deal.transmission or "?"}</b>
+⛽ Yoqilg'i: <b>{deal.fuel_type or "?"}</b>
+
+📝 <i>{desc_short}...</i>
+
+📍 Manzil: <b>{deal.location or "Toshkent"}</b>
+🌐 Manba: {deal.source.upper()}
+"""
+    
+    markup = scraped_listing_keyboard(deal.url, deal.source)
+    
+    if deal.images and deal.images.get('main'):
+        try:
+            await message.answer_photo(
+                photo=deal.images['main'],
+                caption=text,
+                reply_markup=markup,
+                parse_mode="HTML"
+            )
+        except:
+             await message.answer(text, reply_markup=markup, parse_mode="HTML")
+    else:
+        await message.answer(text, reply_markup=markup, parse_mode="HTML")

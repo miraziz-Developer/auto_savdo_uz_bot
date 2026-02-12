@@ -20,7 +20,7 @@ from states.states import SubscriptionStates
 router = Router()
 
 
-@router.message(F.text == "🔔 Obuna")
+@router.message(F.text.in_(["🔔 Obuna", "🔔 Obunalar"]))
 async def subscription_menu(message: Message):
     """Subscription menu"""
     text = """
