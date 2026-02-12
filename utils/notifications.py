@@ -216,11 +216,21 @@ async def publish_scraped_deal(listing_data: Dict):
 📉 Raqobatchilar: <b>{comp_text}</b>
 ⏳ Sotilish tezligi: <b>{liquidity}</b>
 """
+        # Deal Score Visualization
+        score = listing_data.get('deal_score', 50)
+        score_emoji = "⭐️" if score < 70 else "⭐️⭐️" if score < 90 else "⭐️⭐️⭐️"
+        score_tag = f"\n{score_emoji} <b>DEAL BALLI: {score}/100</b>"
+        
+        cross_platform_msg = ""
+        if listing_data.get('cross_platform_url'):
+            other_source = listing_data.get('cross_platform_source', 'Boshqa').upper()
+            cross_platform_msg = f"\n⚠️ <b>DIQQAT: BU MASHINA {other_source}DA HAM BOR!</b>\n"
 
         text = f"""
 {deal_tag}
 🔥 <b>YANGI TAKLIF</b> ({source})
-
+{score_tag}
+{cross_platform_msg}
 🚘 <b>{brand} {model}</b> ({year})
 💰 Narxi: {price_display}
 {profit_text}

@@ -694,3 +694,26 @@ async def get_active_competitors_count(session: AsyncSession, brand: str, model:
     )
     return result.scalar_one_or_none() or 0
 
+
+async def find_similar_listing(session: AsyncSession, brand: str, model: str, year: int, price: float, current_source: str) -> Optional[ScrapedListing]:
+    """
+    Find potentially same car listing from a DIFFERENT source.
+    Criteria: Same Brand, Model, Year. Price ±2%, scraped recently.
+    """
+    time_limit = datetime.utcnow() - timedelta(days=5)
+    
+    result = await session.execute(
+        select(ScrapedListing).where(
+            and_(
+                ScrapedListing.source != current_source,
+                func.lower(ScrapedListing.brand) == brand.lower(),
+                func.lower(ScrapedListing.model) == model.lower(),
+                ScrapedListing.year == year,
+                ScrapedListing.price >= price * 0.98,
+                ScrapedListing.price <= price * 1.02,
+                ScrapedListing.scraped_at >= time_limit
+            )
+        ).limit(1)
+    )
+    return result.scalar_one_or_none()
+

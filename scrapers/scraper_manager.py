@@ -70,7 +70,7 @@ class ScraperManager:
                     # Skip if already exists
                     external_id = f"{source}_{listing.get('external_id', '')}"
                     
-                    from database.crud import check_listing_status, get_average_market_price, get_active_competitors_count
+                    from database.crud import check_listing_status, get_average_market_price, get_active_competitors_count, find_similar_listing
                     from utils.notifications import publish_scraped_deal
                     
                     # Check existence and price drop
@@ -169,6 +169,32 @@ class ScraperManager:
                     else:
                         listing['competitor_count'] = 0
                     
+                    # Cross-platform check
+                    similar = await find_similar_listing(
+                        session, 
+                        listing.get('brand', ''), 
+                        listing.get('model', ''), 
+                        listing.get('year', 0), 
+                        listing.get('price', 0), 
+                        source
+                    )
+                    if similar:
+                        listing['cross_platform_url'] = similar.url
+                        listing['cross_platform_source'] = similar.source
+
+                    # Deal Score Calculation
+                    score = 50
+                    if is_good_deal: score += 15
+                    if avg_price > 0 and listing.get('price', 0) < avg_price * 0.8: score += 15 # Super cheap
+                    if listing.get('mileage', 100000) < 20000: score += 10
+                    
+                    desc_lower = (listing.get('description') or "").lower()
+                    if 'srochno' in desc_lower: score += 10
+                    if 'naqd' in desc_lower: score += 5
+                    if 'kraska bor' in desc_lower or 'dtp' in desc_lower or 'udar' in desc_lower: score -= 25
+                    
+                    listing['deal_score'] = min(100, max(0, score))
+
                     # Smart Notification Logic
                     location = listing.get('location', '').lower()
                     is_nearby = any(x in location for x in ['toshkent', 'tashkent', 'chirchiq', 'yangiyo', 'kibray', 'zangiota', 'sergeli', 'bektemir', 'chilonzor', 'yunusobod', 'mirzo ulug', 'yakkasaroy', 'shayxontohur', 'olmazor', 'uchtepa', 'sharif'])
