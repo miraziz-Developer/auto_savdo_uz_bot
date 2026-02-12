@@ -114,6 +114,7 @@ class ScraperManager:
                         is_good_deal=is_good_deal
                     )
                     
+                    
                     # Notify channel about new deal
                     from utils.notifications import publish_scraped_deal, notify_admin_about_good_deal
                     
@@ -121,7 +122,14 @@ class ScraperManager:
                     listing['avg_price'] = avg_price
                     listing['is_good_deal'] = is_good_deal
                     
-                    await publish_scraped_deal(listing)
+                    # Smart Notification Logic
+                    location = listing.get('location', '').lower()
+                    is_nearby = any(x in location for x in ['toshkent', 'tashkent', 'chirchiq', 'yangiyo', 'kibray', 'zangiota', 'sergeli', 'bektemir', 'chilonzor', 'yunusobod', 'mirzo ulug', 'yakkasaroy', 'shayxontohur', 'olmazor', 'uchtepa', 'sharif'])
+                    
+                    # 1. Tashkent & Nearby: Notify all (high priority area)
+                    # 2. Other regions: Notify ONLY if it's a Good Deal (worth traveling)
+                    if is_nearby or is_good_deal:
+                        await publish_scraped_deal(listing)
                     
                     if is_good_deal:
                         await notify_admin_about_good_deal(listing)
