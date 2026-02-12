@@ -773,3 +773,31 @@ async def get_market_stats(session: AsyncSession) -> dict:
             
     return stats
 
+
+async def convert_inquiry_to_car(session: AsyncSession, inquiry_id: int, new_price: float) -> Optional[Car]:
+    """Convert valid inquiry to car listing"""
+    stmt = select(Inquiry).where(Inquiry.id == inquiry_id)
+    result = await session.execute(stmt)
+    inquiry = result.scalar_one_or_none()
+    
+    if not inquiry: return None
+    
+    new_car = Car(
+        brand=inquiry.brand or "Noma'lum",
+        model=inquiry.model or "Noma'lum",
+        year=inquiry.year or 0,
+        price=new_price,
+        description=inquiry.description,
+        images=inquiry.images,
+        is_available=True,
+        source="inquiry",
+        external_id=f"inquiry_{inquiry.id}"
+    )
+    session.add(new_car)
+    
+    inquiry.status = "completed"
+    # Commit handled by caller usually? No, CRUD should commit.
+    await session.commit()
+    await session.refresh(new_car)
+    return new_car
+

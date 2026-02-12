@@ -228,7 +228,12 @@ async def process_phone(message: Message, state: FSMContext, bot: Bot):
             model=data['model'],
             year=int(data['year']),
             price=float(data['price']),
-            description=data.get('description'),
+            description=f"🛣 Probeg: {data.get('mileage', 'N/A')} km\n"
+                        f"🔌 Motor: {data.get('engine', 'N/A')}\n"
+                        f"⚙️ Karobka: {data.get('gearbox', 'N/A')}\n"
+                        f"⛽️ Yoqilg'i: {data.get('fuel', 'N/A')}\n"
+                        f"🎨 Rangi: {data.get('color', 'N/A')}\n\n"
+                        f"📝 {data.get('description', '')}",
             images={'gallery': data.get('photos', [])},
             status="pending"
         )

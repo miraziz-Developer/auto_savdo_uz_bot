@@ -12,14 +12,14 @@ from database.database import async_session_maker
 from database.crud import (
     is_admin, create_car, get_cars, get_car_by_id,
     update_car, get_pending_inquiries, update_inquiry_status,
-    create_sold_car
+    create_sold_car, convert_inquiry_to_car
 )
 from keyboards.admin_keyboards import (
     admin_main_menu_keyboard, car_management_keyboard,
     publish_keyboard, inquiry_management_keyboard, statistics_keyboard
 )
 from keyboards.user_keyboards import main_menu_keyboard, cancel_keyboard, confirm_keyboard
-from states.states import AddCarStates, RecordSaleStates, BroadcastStates
+from states.states import AddCarStates, RecordSaleStates, BroadcastStates, AdminConvertStates
 from analytics.sales_analytics import SalesAnalytics
 
 router = Router()
@@ -225,6 +225,60 @@ async def confirm_add_car(callback: CallbackQuery, state: FSMContext):
         "Bosh menyu:",
         reply_markup=admin_main_menu_keyboard()
     )
+
+
+# --- CONVERT INQUIRY TO CAR (FLIPPER) ---
+
+@router.callback_query(F.data.startswith("inquiry:convert:"))
+async def start_inquiry_conversion(callback: CallbackQuery, state: FSMContext):
+    """Start logic to convert inquiry to our car inventory"""
+    try:
+        inquiry_id = int(callback.data.split(":")[2])
+    except:
+        await callback.answer("Xatolik ID", show_alert=True)
+        return
+        
+    await state.update_data(inquiry_id=inquiry_id)
+    await state.set_state(AdminConvertStates.waiting_for_price)
+    
+    await callback.message.answer(
+        f"🔄 <b>Inquiry #{inquiry_id} ni Katalogga o'tkazish</b>\n\n"
+        "Biz bu mashinani nechi pulga sotyapmiz?\n"
+        "<i>(Narxni dollarda kiritng, faqat raqam)</i>",
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+@router.message(AdminConvertStates.waiting_for_price)
+async def process_conversion_price(message: Message, state: FSMContext):
+    """Process price and convert"""
+    try:
+        price = float(message.text.replace(' ', ''))
+    except ValueError:
+        await message.answer("❌ Iltimos, narxni to'g'ri kiriting (faqat raqam).")
+        return
+        
+    data = await state.get_data()
+    inquiry_id = data.get('inquiry_id')
+    
+    # Perform conversion
+    async with async_session_maker() as session:
+        new_car = await convert_inquiry_to_car(session, inquiry_id, price)
+        
+    if new_car:
+        await message.answer(
+            f"✅ <b>Mashina muvaffaqiyatli qo'shildi!</b>\n\n"
+            f"ID: <b>{new_car.id}</b>\n"
+            f"Marka: {new_car.brand} {new_car.model}\n"
+            f"Narx: {new_car.price} $\n\n"
+            "Endi 'Admin: Moshinalar' menyusidan uni tahrirlashingiz mumkin (Probeg, Rangi, va h.k).",
+            parse_mode="HTML",
+            reply_markup=admin_main_menu_keyboard()
+        )
+    else:
+        await message.answer("❌ Xatolik: Inquiry topilmadi yoki baza xatosi.")
+        
+    await state.clear()
 
 
 @router.message(F.text == "📋 Admin: Moshinalar")

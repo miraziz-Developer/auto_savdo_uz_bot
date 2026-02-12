@@ -71,8 +71,11 @@ def inquiry_management_keyboard(inquiry_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text="✅ Qabul", callback_data=f"inquiry:accept:{inquiry_id}"),
-        InlineKeyboardButton(text="❌ Rad", callback_data=f"inquiry:reject:{inquiry_id}"),
-        InlineKeyboardButton(text="🏆 Bajarish", callback_data=f"inquiry_complete:{inquiry_id}")
+        InlineKeyboardButton(text="❌ Rad", callback_data=f"inquiry:reject:{inquiry_id}")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🔄 Katalogga o'tkazish", callback_data=f"inquiry:convert:{inquiry_id}"),
+        InlineKeyboardButton(text="🏆 Tugatish", callback_data=f"inquiry_complete:{inquiry_id}")
     )
     builder.row(
         InlineKeyboardButton(text="📞 Qo'ng'iroq", callback_data=f"inquiry:call:{inquiry_id}"),

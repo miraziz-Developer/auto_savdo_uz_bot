@@ -73,3 +73,9 @@ class BroadcastStates(StatesGroup):
     """Admin: Broadcast message states"""
     waiting_for_message = State()
     confirm_broadcast = State()
+
+
+class AdminConvertStates(StatesGroup):
+    """Admin: Convert inquiry to car"""
+    waiting_for_price = State()
+    waiting_for_confirmation = State()
