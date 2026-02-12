@@ -24,12 +24,6 @@ class OLXScraper(BaseScraper):
     async def scrape_listings(self, max_pages: int = 1) -> List[Dict]:
         """
         Scrape car listings from OLX.uz
-        
-        Args:
-            max_pages: Maximum number of pages to scrape PER URL
-            
-        Returns:
-            List of parsed listings
         """
         await self.init_browser()
         listings = []
@@ -41,31 +35,31 @@ class OLXScraper(BaseScraper):
             
             for base_url in urls:
                 for page_num in range(1, max_pages + 1):
-                    url = f"{base_url}?page={page_num}" if '?' not in base_url else f"{base_url}&page={page_num}"
-                    logger.info(f"Scraping OLX: {url}")
+                    list_url = f"{base_url}?page={page_num}" if '?' not in base_url else f"{base_url}&page={page_num}"
+                    logger.info(f"Scraping OLX List: {list_url}")
                     
                     try:
-                        await self.goto_with_retry(url)
-                        await self.page.wait_for_timeout(2000)  # Wait for dynamic content
+                        await self.goto_with_retry(list_url)
+                        await self.page.wait_for_timeout(2000)
                         
-                        # Get all listing cards
-                        listing_elements = await self.page.query_selector_all('[data-cy="l-card"]')
-                        logger.info(f"Found {len(listing_elements)} listings on page {page_num}")
+                        # Collect all URLs from the list page first
+                        listing_urls = await self.get_card_urls()
+                        logger.info(f"Found {len(listing_urls)} listings on {list_url}")
                         
-                        for element in listing_elements:
+                        # Visit each listing URL directly for better data
+                        for url in listing_urls:
                             try:
-                                listing_data = await self.parse_listing(element)
-                                if listing_data:
-                                    listings.append(listing_data)
+                                data = await self.scrape_listing_details(url)
+                                if data:
+                                    listings.append(data)
+                                    # Short delay between listings
+                                    await self.page.wait_for_timeout(1000 + int(1000 * random.random()))
                             except Exception as e:
-                                logger.error(f"Error parsing listing: {e}")
+                                logger.error(f"Error scraping listing {url}: {e}")
                                 continue
-                        
-                        # Random delay between pages
-                        await self.page.wait_for_timeout(2000 + int(1000 * (0.5 - random.random())))
-                        
+                                
                     except Exception as e:
-                        logger.error(f"Error scraping URL {url}: {e}")
+                        logger.error(f"Error processing list page {list_url}: {e}")
                         continue
         
         finally:
@@ -73,72 +67,107 @@ class OLXScraper(BaseScraper):
         
         logger.info(f"Total listings scraped from OLX: {len(listings)}")
         return listings
-    
-    async def parse_listing(self, element) -> Optional[Dict]:
+
+    async def get_card_urls(self) -> List[str]:
+        """Extract URLs from the list view cards"""
+        urls = []
+        try:
+            # Select all card links
+            elements = await self.page.query_selector_all('[data-cy="l-card"] a[href*="/d/"]')
+            for el in elements:
+                href = await el.get_attribute('href')
+                if href:
+                    full_url = f"https://www.olx.uz{href}" if not href.startswith('http') else href
+                    urls.append(full_url)
+        except Exception as e:
+            logger.error(f"Error extracting URLs: {e}")
+        return list(set(urls))  # Deduplicate
+
+    async def scrape_listing_details(self, url: str) -> Optional[Dict]:
         """
-        Parse individual OLX listing
-        
-        Args:
-            element: Playwright element handle
-            
-        Returns:
-            Parsed listing data or None
+        Visit the detailed listing page and extract distinct attributes
         """
         try:
-            # Get link and ID
-            link_element = await element.query_selector('a[href*="/d/"]')
-            if not link_element:
-                return None
+            logger.info(f"Scraping details: {url}")
+            await self.goto_with_retry(url)
+            await self.page.wait_for_timeout(1000) # Wait for render
             
-            url = await link_element.get_attribute('href')
-            if not url.startswith('http'):
-                url = f"https://www.olx.uz{url}"
+            # Extract distinct ID from URL
+            external_id = None
+            if '-ID' in url:
+                match = re.search(r'-ID(\w+)\.html', url)
+                if match:
+                    external_id = match.group(1)
             
-            # Extract ID from URL
-            external_id = url.split('/d/')[1].split('/')[0] if '/d/' in url else None
+            # Title
+            title_el = await self.page.query_selector('h1')
+            title = await title_el.inner_text() if title_el else ""
             
-            # Get title
-            title_element = await element.query_selector('h6')
-            title = await title_element.inner_text() if title_element else ""
-            
-            # Get price
-            price_element = await element.query_selector('[data-testid="ad-price"]')
-            price_text = await price_element.inner_text() if price_element else "0"
-            
-            # Parse price (remove spaces and "so'm")
+            # Price
+            price_el = await self.page.query_selector('[data-testid="ad-price-container"] h3') 
+            price_text = await price_el.inner_text() if price_el else "0"
             price = self.parse_price(price_text)
             
-            # Get image
-            img_element = await element.query_selector('img')
-            image_url = await img_element.get_attribute('src') if img_element else None
+            # Location and Date (often in a specific span)
+            location = "Toshkent" # Default
+            # Try to find location text
+            loc_el = await self.page.query_selector('[data-testid="main"] span[class*="css-"]') 
+            # This selector is weak, better to grab full text and regex
             
-            # Extract brand, model, year from title
-            brand, model, year = self.extract_car_info(title)
+            # Grab all parameter text
+            # Usually stored in a list
+            params_text = ""
+            param_list = await self.page.query_selector_all('li p') # Common OLX param structure
+            for p in param_list:
+                params_text += (await p.inner_text()) + "\n"
             
-            # Get location and date
-            location_element = await element.query_selector('[data-testid="location-date"]')
-            location_date = await location_element.inner_text() if location_element else ""
+            # Backup: get all body text
+            body_text = await self.page.inner_text('body')
             
-            # Extract basic details from visible text
-            # OLX cards often have text like "Sedan • 2022 • 45 000 km • Benzin"
-            all_text = await element.inner_text()
-            
+            # Extract Attributes using Regex (supporting RU and UZ)
+            # Mileage
             mileage = 0
-            mileage_match = re.search(r'(\d+[\d\s]*)\s*km', all_text)
+            mileage_match = re.search(r'(Пробег|Yurgani)[:\s]+(\d+[\d\s]*)\s*km', body_text, re.IGNORECASE)
             if mileage_match:
-                mileage = int(re.sub(r'[^\d]', '', mileage_match.group(1)))
-                
-            fuel_type = "Noma'lum"
-            if "Benzin" in all_text: fuel_type = "Benzin"
-            elif "Gaz" in all_text: fuel_type = "Gaz"
-            elif "Dizel" in all_text: fuel_type = "Dizel"
-            elif "Elektr" in all_text: fuel_type = "Elektr"
-            elif "Gibrid" in all_text: fuel_type = "Gibrid"
+                mileage = int(re.sub(r'[^\d]', '', mileage_match.group(2)))
             
+            # Year
+            year = None
+            year_match = re.search(r'(Год выпуска|Ishlab chiqarilgan yili)[:\s]+(\d{4})', body_text, re.IGNORECASE)
+            if year_match:
+                year = int(year_match.group(2))
+            
+            # Fuel
+            fuel_type = "Noma'lum"
+            if re.search(r'(Бензин|Benzin)', body_text, re.IGNORECASE): fuel_type = "Benzin"
+            elif re.search(r'(Газ|Gaz)', body_text, re.IGNORECASE): fuel_type = "Gaz"
+            elif re.search(r'(Дизель|Dizel)', body_text, re.IGNORECASE): fuel_type = "Dizel"
+            elif re.search(r'(Электро|Elektr)', body_text, re.IGNORECASE): fuel_type = "Elektr"
+            elif re.search(r'(Гибрид|Gibrid)', body_text, re.IGNORECASE): fuel_type = "Gibrid"
+            
+            # Transmission
             transmission = "Noma'lum"
-            if "Avtomat" in all_text: transmission = "Avtomat"
-            elif "Mexanika" in all_text: transmission = "Mexanika"
+            if re.search(r'(Автомат|Avtomat)', body_text, re.IGNORECASE): transmission = "Avtomat"
+            elif re.search(r'(Механи|Mexani)', body_text, re.IGNORECASE): transmission = "Mexanika"
+            
+            # Brand/Model extraction - try from title first, or params
+            brand, model, scraped_year = self.extract_car_info(title + " " + body_text)
+            if year is None and scraped_year:
+                year = scraped_year
+            
+            # Images
+            image_url = None
+            img_el = await self.page.query_selector('.swiper-slide-active img')
+            if not img_el:
+                img_el = await self.page.query_selector('img[src*="olxcdn.com"]')
+            
+            if img_el:
+                image_url = await img_el.get_attribute('src')
 
+            # Fallback for Location
+            # Often appearing as "Ташкент, Мирзо-Улугбекский район"
+            # We preserve navigation text or footer text
+            
             return {
                 'source': 'olx',
                 'external_id': external_id,
@@ -149,87 +178,97 @@ class OLXScraper(BaseScraper):
                 'year': year,
                 'price': price,
                 'mileage': mileage,
-                'location': location_date,
+                'location': "Toshkent", # Placeholder, hard to reliably extract dynamic loc
                 'fuel_type': fuel_type,
                 'transmission': transmission,
-                'description': all_text, # Use visible text for keyword analysis
+                'description': f"{title}\n{body_text[:3000]}",
                 'images': {'main': image_url} if image_url else None,
             }
-        
+
         except Exception as e:
-            logger.error(f"Error parsing OLX listing: {e}")
+            logger.error(f"Detailed parsing failed for {url}: {e}")
             return None
-    
+
     @staticmethod
     def parse_price(price_text: str) -> float:
         """Parse price from text in USD"""
         try:
             # Remove all non-digit characters except decimal point
+            # Detect currency
+            is_uzs = "sum" in price_text.lower() or "so'm" in price_text.lower()
+            
             price_clean = re.sub(r'[^\d.]', '', price_text.replace(' ', '').replace(',', ''))
             if not price_clean:
                 return 0.0
                 
             val = float(price_clean)
             
-            # If "y.e" or "$" is NOT in text, it's likely UZS - convert to USD
-            if 'y.e' not in price_text.lower() and '$' not in price_text:
-                return round(val / 12800, 2) # UZS to USD
+            if is_uzs:
+                return round(val / 12850, 0) # Approx rate
             
-            return val # Already USD
+            return val
         except:
             return 0.0
     
     @staticmethod
-    def extract_car_info(title: str) -> tuple:
+    def extract_car_info(text: str) -> tuple:
         """
-        Extract brand, model, and year from title
-        
-        Returns:
-            (brand, model, year) tuple
+        Extract brand, model, and year from text blob
         """
-        title_lower = title.lower()
+        text_lower = text.lower()
         
-        # Comprehensive list of brands in Uzbekistan
         brands = {
             'chevrolet': ['gentra', 'lacetti', 'malibu', 'spark', 'nexia', 'cobalt', 'captiva', 'tahoe', 'monza', 'onix', 'tracker', 'equinox', 'damas', 'labo'],
             'daewoo': ['nexia', 'matiz', 'tico', 'damas', 'gentra'],
-            'byd': ['song', 'han', 'tang', 'seagull', 'dolphin', 'chazor', 'destroyer', 'e2', 'qin'],
-            'chery': ['tiggo 7', 'tiggo 8', 'tiggo 4', 'arrizo', 'tiggo'],
+            'kia': ['k5', 'k8', 'carnival', 'sorento', 'sportage', 'seltos', 'sonet', 'stinger', 'cerato', 'rio', 'ev6', 'ev9'],
+            'hyundai': ['elantra', 'sonata', 'tucson', 'santa fe', 'palisade', 'creta', 'accent', 'staria'],
+            'byd': ['song', 'han', 'tang', 'chazor', 'destroyer', 'seagull', 'dolphin', 'e2', 'qin'],
+            'toyota': ['camry', 'prado', 'land cruiser', 'corolla', 'cross', 'rav4', 'highlander'],
+            'lada': ['vesta', 'xray', 'largus', 'niva', 'granta', 'priora'],
+            'chery': ['tiggo', 'arrizo'],
             'jetour': ['x70', 'x90', 'dashing', 'traveller'],
-            'lada': ['vesta', 'granta', 'niva', 'largus', 'xray', 'priora', 'kalina', '2107', '2106'],
-            'hyundai': ['accent', 'sonata', 'elantra', 'santa fe', 'tucson', 'palisade', 'staria', 'creta', 'kusta'],
-            'kia': ['rio', 'cerato', 'sportage', 'sorento', 'k5', 'k8', 'k9', 'seltos', 'carnival', 'ev6'],
-            'toyota': ['camry', 'corolla', 'land cruiser', 'prado', 'rav4', 'highlander', 'hilux'],
-            'mercedes': ['s-class', 'e-class', 'c-class', 'g-class', 'ml', 'gl', 'gle', 'gls', 'w221', 'w222', 'w223'],
-            'bmw': ['x5', 'x6', 'x7', '3-series', '5-series', '7-series', 'm5', 'm3'],
-            'nissan': ['qashqai', 'x-trail', 'patrol', 'juke', 'altima', 'sentra'],
-            'honda': ['accord', 'civic', 'cr-v', 'envix'],
-            'mazda': ['3', '6', 'cx-5', 'cx-9'],
-            'lexus': ['rx', 'lx', 'es', 'is', 'gx'],
-            'volkswagen': ['id.4', 'id.6', 'teramont', 'bora', 'tiguan', 'touareg'],
-            'skoda': ['kodiaq', 'octavia', 'superb'],
             'geely': ['monjaro', 'coolray', 'tugella', 'emgrand'],
-            'haval': ['jolion', 'h6', 'darzo', 'm6'],
-            'gac': ['gs8', 'm8', 'aion'],
+            'bmw': ['x5', 'x6', 'x7', '5-series', '7-series', 'm5'],
+            'mercedes': ['s-class', 'e-class', 'c-class', 'g-class', 'cls', 'gle', 'gls'],
+            'zeekr': ['001', '007', 'x', '009'],
+            'li': ['l7', 'l9', 'l6', 'one'],
         }
         
         brand = "Noma'lum"
         model = "Noma'lum"
         
-        # Find brand
-        for brand_name in brands.keys():
-            if brand_name in title_lower:
-                brand = brand_name.capitalize()
-                # Find model
-                for model_name in brands[brand_name]:
-                    if model_name in title_lower:
-                        model = model_name.upper()
+        # Heuristic: First match wins
+        for b_name, m_list in brands.items():
+            if b_name in text_lower:
+                brand = b_name.capitalize()
+                for m in m_list:
+                    if m in text_lower:
+                        model = m.upper()
                         break
                 break
         
-        # Extract year (4 digits between 1970-2026)
-        year_match = re.search(r'\b(19[789]\d|20[012]\d)\b', title)
-        year = int(year_match.group(1)) if year_match else None
+        # If brand not found but model is unique (e.g. "Gentra")
+        if brand == "Noma'lum":
+            for b_name, m_list in brands.items():
+                for m in m_list:
+                    if m in text_lower:
+                        brand = b_name.capitalize()
+                        model = m.upper()
+                        break
+                if brand != "Noma'lum": break
+
+        # Year
+        year = None
+        # Look for explicit year patterns
+        # 1. "2023 yil"
+        # 2. "2023 г"
+        # 3. just "2023" isolated
+        year_matches = re.findall(r'\b(199\d|20[012]\d)\b', text)
+        if year_matches:
+            # Take the max year found usually (listing year is likely the car year)
+            # But filter reasonable scraping date vs car date
+            valid_years = [int(y) for y in year_matches if 1990 <= int(y) <= 2026]
+            if valid_years:
+                year = max(valid_years)
         
         return brand, model, year
-

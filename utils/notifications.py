@@ -11,6 +11,23 @@ from config import settings
 # Global bot instance
 bot = None
 
+LIQUIDITY_MAP = {
+    'gentra': '🔥 Juda tez (1-3 kun)',
+    'cobalt': '🔥 Juda tez (1-3 kun)',
+    'spark': '🚀 Tez (2-5 kun)',
+    'nexia': '🚀 Tez (3-5 kun)',
+    'damas': '🔥 Juda tez (1-2 kun)',
+    'matiz': '🚀 Tez (3-7 kun)',
+    'malibu': '⚠️ O\'rtacha (10-20 kun)',
+    'tracker': '⚠️ O\'rtacha (7-15 kun)',
+    'onix': '⚠️ O\'rtacha (7-15 kun)',
+    'kia': '🐢 Sekin (20+ kun)',
+    'hyundai': '🐢 Sekin (20+ kun)',
+    'byd': '🚀 Tezlashmoqda (5-10 kun)',
+    'chery': '🐢 Sekin (30+ kun)',
+    'jetour': '🐢 Sekin (30+ kun)',
+}
+
 
 def set_bot_instance(bot_instance: Bot):
     """Set global bot instance"""
@@ -136,12 +153,14 @@ async def publish_scraped_deal(listing_data: Dict):
         urgency_tag = ""
         if any(w in description for w in ['srochno', 'zarur', 'tez sotiladi', 'pul kerak', 'kami bor']):
             urgency_tag = "🔥 <b>SROCHNO!</b> "
+        if any(w in description for w in ['naqd', 'faqat naqd']):
+            urgency_tag += "💵 <b>NAQDGA!</b>"
             
         condition_tag = ""
         if any(w in description for w in ['toza', 'kraska yo\'q', 'petno yo\'q', 'radnoy']):
             condition_tag = "✨ <b>HOLATI: TOZA</b>"
-        elif 'kraska bor' in description or 'dtp' in description:
-            condition_tag = "⚠️ <b>HOLATI: Kraska bor</b>"
+        elif 'kraska bor' in description or 'dtp' in description or 'petno' in description:
+            condition_tag = "⚠️ <b>HOLATI: Kraska/Petno bor</b>"
             
         owner_tag = ""
         if any(w in description for w in ['ozimniki', 'o\'zimniki', 'tirikchilik emas', 'salondan']):
@@ -168,9 +187,35 @@ async def publish_scraped_deal(listing_data: Dict):
             price_display = f"<b>{price:,.0f} $</b>"
             
         if is_good_deal:
-            if not deal_tag: deal_tag = "\n🔥 <b>SUPER NARX! (BOZORDAN ARZON)</b>"
             diff = avg_price - price
+            percent = (diff / avg_price) * 100 if avg_price else 0
+            
+            if not deal_tag: 
+                deal_tag = f"\n🤑 <b>SUPER DEAL! (BOZORDAN {percent:.0f}% ARZON)</b>"
+            
             profit_text = f"\n📉 <b>O'rtacha narx:</b> ~{avg_price:,.0f} $\n💰 <b>Potentsial foyda:</b> ~{diff:,.0f} $"
+
+        # Market Analysis Data
+        competitors = listing_data.get('competitor_count', 0)
+        comp_text = f"{competitors} ta"
+        if competitors < 3: comp_text += " (OZ QOLGAN!)"
+        elif competitors > 20: comp_text += " (Ko'p)"
+        
+        liquidity = "Noma'lum"
+        if model.lower() in LIQUIDITY_MAP:
+            liquidity = LIQUIDITY_MAP[model.lower()]
+        else:
+            # Try partial match
+            for k, v in LIQUIDITY_MAP.items():
+                if k in model.lower() or k in brand.lower():
+                    liquidity = v
+                    break
+
+        market_context = f"""
+📊 <b>BOZOR TAHLILI:</b>
+📉 Raqobatchilar: <b>{comp_text}</b>
+⏳ Sotilish tezligi: <b>{liquidity}</b>
+"""
 
         text = f"""
 {deal_tag}
@@ -179,7 +224,7 @@ async def publish_scraped_deal(listing_data: Dict):
 🚘 <b>{brand} {model}</b> ({year})
 💰 Narxi: {price_display}
 {profit_text}
-
+{market_context}
 📍 Manzil: <b>{location}</b>
 📟 Probeg: <b>{mileage} km</b>
 ⚙️ Karobka: <b>{transmission}</b>

@@ -2,6 +2,7 @@
 CRUD operations for database models
 """
 from typing import Optional, List
+import re
 from datetime import datetime, timedelta
 from sqlalchemy import select, update, delete, and_, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -405,55 +406,123 @@ async def check_listing_status(session: AsyncSession, external_id: str, new_pric
     return {'exists': True, 'price_changed': False, 'old_price': existing.price}
 
 
-async def get_average_market_price(session: AsyncSession, brand: str, model: str, year: int, transmission: Optional[str] = None) -> float:
-    """Calculate average market price for a specific car model, year, and transmission"""
+def extract_position(text: Optional[str]) -> Optional[str]:
+    """Extract car position/trim from description text"""
+    if not text:
+        return None
+    text = text.lower()
     
-    # Build filters
-    sold_filters = [
-        func.lower(SoldCar.brand) == brand.lower(),
-        func.lower(SoldCar.model) == model.lower(),
-        SoldCar.year == year
-    ]
+    # Specific Trims
+    if 'premier' in text: return 'premier'
+    if 'redline' in text: return 'redline'
+    if 'style' in text: return 'style'
+    if 'elegant' in text: return 'elegant'
+    if 'plus' in text: return 'plus'
+    if 'ltoz' in text or 'ltz' in text: return 'ltz'
+    if ' ls ' in text: return 'ls'
+    if ' lt ' in text: return 'lt'
     
-    scraped_filters = [
-        func.lower(ScrapedListing.brand) == brand.lower(),
-        func.lower(ScrapedListing.model) == model.lower(),
-        ScrapedListing.year == year,
-        ScrapedListing.price > 1000
-    ]
-    
-    # Add transmission filter if available and valid
-    if transmission and transmission in ['Avtomat', 'Mexanika']:
-        # We need to be careful as data might be messy. 
-        # But stricter filtering is better for accurate pricing.
-        # Check if column exists or just skip if not confident?
-        # Assuming we store standardized values.
-        pass 
-        # Actually, let's skip strict transmission filtering for DB compatibility 
-        # unless we are sure data is clean. 
-        # Re-enabling it simply:
-        # sold_filters.append(SoldCar.transmission == transmission) # SoldCar doesn't have transmission column yet!
-        # ScrapedListing has it.
-        scraped_filters.append(ScrapedListing.transmission == transmission)
+    # Numeric positions (1-poz, 2-poz...)
+    pos_match = re.search(r'\b(\d)\s*[-]?\s*(poz|evro)', text)
+    if pos_match:
+        return f"{pos_match.group(1)}-pozitsiya"
+        
+    if 'full' in text: return 'full'
+    return None
 
-    # Try to get from SoldCars first (real transaction data)
-    # Note: SoldCar table needs transmission column to support this fully. 
-    # For now, we accept general average from SoldCars as fallback, but rely on ScrapedListings for specific transmission.
-    
-    # Fallback to ScrapedListings (market data) - THIS IS PRIMARY FOR NOW
-    stmt = select(func.avg(ScrapedListing.price)).where(and_(*scraped_filters))
-    scraped_result = await session.execute(stmt)
-    scraped_avg = scraped_result.scalar_one_or_none()
-    
-    if scraped_avg:
-        return float(scraped_avg)
 
-    # If no specific transmission data, assume general average from SoldCars
-    stmt_sold = select(func.avg(SoldCar.selling_price)).where(and_(*sold_filters))
-    sold_result = await session.execute(stmt_sold)
-    sold_avg = sold_result.scalar_one_or_none()
+async def get_average_market_price(
+    session: AsyncSession, 
+    brand: str, 
+    model: str, 
+    year: int, 
+    transmission: Optional[str] = None,
+    mileage: Optional[int] = None,
+    description: Optional[str] = None
+) -> float:
+    """
+    Calculate TRUE market price for Flipper Mode.
+    Filters by: Brand, Model, Year, Transmission, Mileage, Position/Trim.
+    Removes outliers (top/bottom 10%) to ignore junk/spam.
+    """
     
-    return float(sold_avg) if sold_avg else 0.0
+    # 1. Base Query
+    query = select(ScrapedListing.price, ScrapedListing.description, ScrapedListing.mileage).where(
+        and_(
+            func.lower(ScrapedListing.brand) == brand.lower(),
+            func.lower(ScrapedListing.model) == model.lower(),
+            ScrapedListing.year == year,
+            ScrapedListing.price > 2000  # Ignore junk
+        )
+    )
+    
+    # 2. Transmission Filter
+    if transmission:
+        # Loose matching for transmission
+        if transmission.lower() in ['avtomat', 'automatic']:
+             query = query.where(func.lower(ScrapedListing.transmission).in_(['avtomat', 'automatic']))
+        elif transmission.lower() in ['mexanika', 'manual']:
+             query = query.where(func.lower(ScrapedListing.transmission).in_(['mexanika', 'manual']))
+
+    result = await session.execute(query)
+    rows = result.all() # [(price, desc, mileage), ...]
+    
+    if not rows:
+        return 0.0
+
+    # 3. Post-Processing in Python (Filtering)
+    filtered_prices = []
+    
+    target_position = extract_position(description)
+    
+    for row in rows:
+        r_price, r_desc, r_mileage = row
+        
+        # A. Position Filter
+        if target_position:
+            r_pos = extract_position(r_desc)
+            # Only compare if positions match OR comparison listing has NO position (general)
+            # But for Flipper mode, we want strict comparison:
+            # If I sell '3-poz', I accept '3-poz' or 'elegant' or 'style'. I reject '1-poz'.
+            if r_pos and r_pos != target_position:
+                continue
+        
+        # B. Mileage Filter
+        if mileage and r_mileage:
+            # If target has 50k km, compare with 30k-70k range
+            # If target has 0-5k (New), compare with 0-10k
+            
+            diff = abs(mileage - r_mileage)
+            if mileage < 10000:
+                if r_mileage > 20000: continue
+            else:
+                if diff > 30000: continue # Too different
+        
+        filtered_prices.append(r_price)
+    
+    # Fallback: If filtering removed everything (e.g. rare trim), relax filters
+    if len(filtered_prices) < 3:
+        # Reset and just take all with same transmission
+        filtered_prices = [r[0] for r in rows]
+        
+    if not filtered_prices:
+        return 0.0
+        
+    # 4. Outlier Removal (Trim top/bottom 10%)
+    filtered_prices.sort()
+    count = len(filtered_prices)
+    
+    if count > 5:
+        trim_count = int(count * 0.1) # 10%
+        # Remove low (potential scams) and high (dreamers)
+        filtered_prices = filtered_prices[trim_count : count - trim_count]
+        
+    if not filtered_prices:
+        return 0.0
+        
+    # Calculate Average
+    avg_price = sum(filtered_prices) / len(filtered_prices)
+    return round(avg_price, 0)
 
 
 # Analytics queries
@@ -598,6 +667,30 @@ async def get_car_review_count(session: AsyncSession, car_id: int) -> int:
     result = await session.execute(
         select(func.count(Review.id))
         .where(Review.car_id == car_id)
+    )
+    return result.scalar_one_or_none() or 0
+
+
+async def get_active_competitors_count(session: AsyncSession, brand: str, model: str, year: int, price: float) -> int:
+    """
+    Count direct competitors:
+    Same Brand, Model, Year, and Price within ±15% range.
+    """
+    lower_bound = price * 0.85
+    upper_bound = price * 1.15
+    
+    result = await session.execute(
+        select(func.count(ScrapedListing.id)).where(
+            and_(
+                func.lower(ScrapedListing.brand) == brand.lower(),
+                func.lower(ScrapedListing.model) == model.lower(),
+                ScrapedListing.year == year,
+                ScrapedListing.price >= lower_bound,
+                ScrapedListing.price <= upper_bound,
+                # We assume listings scraped in last 7 days are "active"
+                ScrapedListing.scraped_at >= datetime.utcnow() - timedelta(days=7)
+            )
+        )
     )
     return result.scalar_one_or_none() or 0
 

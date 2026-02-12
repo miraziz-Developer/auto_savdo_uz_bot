@@ -70,7 +70,7 @@ class ScraperManager:
                     # Skip if already exists
                     external_id = f"{source}_{listing.get('external_id', '')}"
                     
-                    from database.crud import check_listing_status, get_average_market_price
+                    from database.crud import check_listing_status, get_average_market_price, get_active_competitors_count
                     from utils.notifications import publish_scraped_deal
                     
                     # Check existence and price drop
@@ -84,14 +84,15 @@ class ScraperManager:
                             # Re-calculate market analysis
                             avg_price = 0
                             if listing.get('brand') and listing.get('model') and listing.get('year'):
-                                avg_price = await get_average_market_price(
-                                    session, 
-                                    listing['brand'], 
-                                    listing['model'], 
-                                    listing['year'],
-                                    transmission=listing.get('transmission')
-                                )
-                            
+                                    avg_price = await get_average_market_price(
+                                        session, 
+                                        listing['brand'], 
+                                        listing['model'], 
+                                        listing['year'],
+                                        transmission=listing.get('transmission'),
+                                        mileage=listing.get('mileage'),
+                                        description=listing.get('description')
+                                    )                          
                             # Add drop info
                             listing['avg_price'] = avg_price
                             # Is it good deal NOW?
@@ -118,7 +119,9 @@ class ScraperManager:
                             listing['brand'], 
                             listing['model'], 
                             listing['year'],
-                            transmission=listing.get('transmission')
+                            transmission=listing.get('transmission'),
+                            mileage=listing.get('mileage'),
+                            description=listing.get('description')
                         )
                         
                         if avg_price > 0 and listing.get('price', 0) > 0:
@@ -155,6 +158,16 @@ class ScraperManager:
                     # Enrich listing data with market info for notification
                     listing['avg_price'] = avg_price
                     listing['is_good_deal'] = is_good_deal
+                    if listing.get('brand') and listing.get('model') and listing.get('year'):
+                        listing['competitor_count'] = await get_active_competitors_count(
+                            session, 
+                            listing['brand'], 
+                            listing['model'], 
+                            listing['year'],
+                            listing['price']
+                        )
+                    else:
+                        listing['competitor_count'] = 0
                     
                     # Smart Notification Logic
                     location = listing.get('location', '').lower()
