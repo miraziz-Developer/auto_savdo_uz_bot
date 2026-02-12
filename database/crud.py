@@ -364,47 +364,96 @@ async def mark_listing_processed(session: AsyncSession, listing_id: int):
     await session.commit()
 
 
-async def listing_exists(session: AsyncSession, external_id: str) -> bool:
-    """Check if listing already exists"""
+async def check_listing_status(session: AsyncSession, external_id: str, new_price: float) -> dict:
+    """
+    Check if listing exists and if price changed.
+    Returns: {'exists': bool, 'price_changed': bool, 'old_price': float, 'message': str}
+    """
     result = await session.execute(
-        select(ScrapedListing.id).where(ScrapedListing.external_id == external_id)
+        select(ScrapedListing).where(ScrapedListing.external_id == external_id)
     )
-    return result.scalar_one_or_none() is not None
-
-
-async def get_average_market_price(session: AsyncSession, brand: str, model: str, year: int) -> float:
-    """Calculate average market price for a specific car model and year"""
-    # Try to get from SoldCars first (real transaction data)
-    sold_result = await session.execute(
-        select(func.avg(SoldCar.selling_price))
-        .where(
-            and_(
-                func.lower(SoldCar.brand) == brand.lower(),
-                func.lower(SoldCar.model) == model.lower(),
-                SoldCar.year == year
-            )
-        )
-    )
-    sold_avg = sold_result.scalar_one_or_none()
+    existing = result.scalar_one_or_none()
     
-    if sold_avg:
-        return float(sold_avg)
+    if not existing:
+        return {'exists': False, 'price_changed': False, 'old_price': 0}
+    
+    # If exists, check price
+    if abs(existing.price - new_price) > 1: # Ignore tiny floating point diffs
+        old_price = existing.price
         
-    # Fallback to ScrapedListings (market data)
-    scraped_result = await session.execute(
-        select(func.avg(ScrapedListing.price))
-        .where(
-            and_(
-                func.lower(ScrapedListing.brand) == brand.lower(),
-                func.lower(ScrapedListing.model) == model.lower(),
-                ScrapedListing.year == year,
-                ScrapedListing.price > 1000  # Filter out unrealistic prices
-            )
-        )
-    )
+        # Update price in DB
+        existing.price = new_price
+        existing.updated_at = datetime.utcnow() # We need updated_at column? Base model has it? ScrapedListing might not.
+        # ScrapedListing has scraped_at. Let's update scraped_at.
+        existing.scraped_at = datetime.utcnow()
+        existing.is_processed = False # Mark as unprocessed so we can re-notify? 
+        # Actually, we should handle notification here or return status.
+        
+        await session.commit()
+        
+        diff = old_price - new_price
+        change_type = "dropped" if diff > 0 else "increased"
+        
+        return {
+            'exists': True, 
+            'price_changed': True, 
+            'old_price': old_price, 
+            'change_type': change_type,
+            'diff': abs(diff)
+        }
+        
+    return {'exists': True, 'price_changed': False, 'old_price': existing.price}
+
+
+async def get_average_market_price(session: AsyncSession, brand: str, model: str, year: int, transmission: Optional[str] = None) -> float:
+    """Calculate average market price for a specific car model, year, and transmission"""
+    
+    # Build filters
+    sold_filters = [
+        func.lower(SoldCar.brand) == brand.lower(),
+        func.lower(SoldCar.model) == model.lower(),
+        SoldCar.year == year
+    ]
+    
+    scraped_filters = [
+        func.lower(ScrapedListing.brand) == brand.lower(),
+        func.lower(ScrapedListing.model) == model.lower(),
+        ScrapedListing.year == year,
+        ScrapedListing.price > 1000
+    ]
+    
+    # Add transmission filter if available and valid
+    if transmission and transmission in ['Avtomat', 'Mexanika']:
+        # We need to be careful as data might be messy. 
+        # But stricter filtering is better for accurate pricing.
+        # Check if column exists or just skip if not confident?
+        # Assuming we store standardized values.
+        pass 
+        # Actually, let's skip strict transmission filtering for DB compatibility 
+        # unless we are sure data is clean. 
+        # Re-enabling it simply:
+        # sold_filters.append(SoldCar.transmission == transmission) # SoldCar doesn't have transmission column yet!
+        # ScrapedListing has it.
+        scraped_filters.append(ScrapedListing.transmission == transmission)
+
+    # Try to get from SoldCars first (real transaction data)
+    # Note: SoldCar table needs transmission column to support this fully. 
+    # For now, we accept general average from SoldCars as fallback, but rely on ScrapedListings for specific transmission.
+    
+    # Fallback to ScrapedListings (market data) - THIS IS PRIMARY FOR NOW
+    stmt = select(func.avg(ScrapedListing.price)).where(and_(*scraped_filters))
+    scraped_result = await session.execute(stmt)
     scraped_avg = scraped_result.scalar_one_or_none()
     
-    return float(scraped_avg) if scraped_avg else 0.0
+    if scraped_avg:
+        return float(scraped_avg)
+
+    # If no specific transmission data, assume general average from SoldCars
+    stmt_sold = select(func.avg(SoldCar.selling_price)).where(and_(*sold_filters))
+    sold_result = await session.execute(stmt_sold)
+    sold_avg = sold_result.scalar_one_or_none()
+    
+    return float(sold_avg) if sold_avg else 0.0
 
 
 # Analytics queries

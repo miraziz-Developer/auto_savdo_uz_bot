@@ -143,8 +143,8 @@ class AvtoelonScraper(BaseScraper):
                 'location': location,
                 'transmission': transmission,
                 'fuel_type': fuel_type,
-                'color': "Noma'lum", # Hard to extract from list view without specific selector
-                'description': "",
+                'color': "Noma'lum",
+                'description': f"{title} {params_text}", # For keyword analysis
                 'images': {'main': image_url} if image_url else None,
             }
         

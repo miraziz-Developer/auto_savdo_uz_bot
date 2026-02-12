@@ -130,16 +130,45 @@ async def publish_scraped_deal(listing_data: Dict):
         mileage = listing_data.get('mileage', 0)
         transmission = listing_data.get('transmission', "Noma'lum")
         fuel_type = listing_data.get('fuel_type', "Noma'lum")
+        description = (listing_data.get('description') or "").lower()
+        
+        # Keyword Analysis
+        urgency_tag = ""
+        if any(w in description for w in ['srochno', 'zarur', 'tez sotiladi', 'pul kerak', 'kami bor']):
+            urgency_tag = "🔥 <b>SROCHNO!</b> "
+            
+        condition_tag = ""
+        if any(w in description for w in ['toza', 'kraska yo\'q', 'petno yo\'q', 'radnoy']):
+            condition_tag = "✨ <b>HOLATI: TOZA</b>"
+        elif 'kraska bor' in description or 'dtp' in description:
+            condition_tag = "⚠️ <b>HOLATI: Kraska bor</b>"
+            
+        owner_tag = ""
+        if any(w in description for w in ['ozimniki', 'o\'zimniki', 'tirikchilik emas', 'salondan']):
+            owner_tag = "👨‍💼 <b>EGASIDAN</b>"
+            
+        credit_tag = ""
+        if any(w in description for w in ['variant', 'ijara', 'boshiga', 'oyiga', 'vikup']):
+            credit_tag = "💳 <b>VARIANT/KREDIT</b>"
         
         # Market Analysis
         avg_price = listing_data.get('avg_price', 0)
         is_good_deal = listing_data.get('is_good_deal', False)
+        is_price_drop = listing_data.get('is_price_drop', False)
         
         deal_tag = ""
         profit_text = ""
         
+        if is_price_drop:
+            old_price = listing_data.get('old_price', 0)
+            diff = listing_data.get('price_diff', 0)
+            deal_tag = f"\n📉 <b>NARX TUSHDI! (-{diff:,.0f} $)</b>"
+            price_display = f"<s>{old_price:,.0f} $</s> ➡️ <b>{price:,.0f} $</b>"
+        else:
+            price_display = f"<b>{price:,.0f} $</b>"
+            
         if is_good_deal:
-            deal_tag = "\n🔥 <b>SUPER NARX! (BOZORDAN ARZON)</b>"
+            if not deal_tag: deal_tag = "\n🔥 <b>SUPER NARX! (BOZORDAN ARZON)</b>"
             diff = avg_price - price
             profit_text = f"\n📉 <b>O'rtacha narx:</b> ~{avg_price:,.0f} $\n💰 <b>Potentsial foyda:</b> ~{diff:,.0f} $"
 
@@ -148,13 +177,18 @@ async def publish_scraped_deal(listing_data: Dict):
 🔥 <b>YANGI TAKLIF</b> ({source})
 
 🚘 <b>{brand} {model}</b> ({year})
-💰 Narxi: <b>{price:,.0f} $</b>
+💰 Narxi: {price_display}
 {profit_text}
 
 📍 Manzil: <b>{location}</b>
 📟 Probeg: <b>{mileage} km</b>
 ⚙️ Karobka: <b>{transmission}</b>
 ⛽ Yoqilg'i: <b>{fuel_type}</b>
+
+{urgency_tag}
+{condition_tag}
+{owner_tag}
+{credit_tag}
 
 🔗 <a href="{url}">E'lonni batafsil ko'rish</a>
 

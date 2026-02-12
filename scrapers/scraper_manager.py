@@ -70,11 +70,44 @@ class ScraperManager:
                     # Skip if already exists
                     external_id = f"{source}_{listing.get('external_id', '')}"
                     
-                    if await listing_exists(session, external_id):
+                    from database.crud import check_listing_status, get_average_market_price
+                    from utils.notifications import publish_scraped_deal
+                    
+                    # Check existence and price drop
+                    status = await check_listing_status(session, external_id, listing.get('price', 0))
+                    
+                    if status['exists']:
+                        if status.get('price_changed') and status.get('change_type') == 'dropped':
+                            # Price dropped! Notify
+                            logger.info(f"📉 Price Drop: {listing['title']}")
+                            
+                            # Re-calculate market analysis
+                            avg_price = 0
+                            if listing.get('brand') and listing.get('model') and listing.get('year'):
+                                avg_price = await get_average_market_price(
+                                    session, 
+                                    listing['brand'], 
+                                    listing['model'], 
+                                    listing['year'],
+                                    transmission=listing.get('transmission')
+                                )
+                            
+                            # Add drop info
+                            listing['avg_price'] = avg_price
+                            # Is it good deal NOW?
+                            listing['is_good_deal'] = (avg_price > 0 and listing['price'] < avg_price * 0.85)
+                            
+                            # Price drop specifics
+                            listing['is_price_drop'] = True
+                            listing['old_price'] = status['old_price']
+                            listing['price_diff'] = status['diff']
+                            
+                            # Notify
+                            await publish_scraped_deal(listing)
+                            
                         continue
                     
-                    from database.crud import get_average_market_price
-                    
+                    # New listing logic below
                     # Calculate market analysis
                     avg_price = 0
                     is_good_deal = False
@@ -84,7 +117,8 @@ class ScraperManager:
                             session, 
                             listing['brand'], 
                             listing['model'], 
-                            listing['year']
+                            listing['year'],
+                            transmission=listing.get('transmission')
                         )
                         
                         if avg_price > 0 and listing.get('price', 0) > 0:

@@ -152,7 +152,7 @@ class OLXScraper(BaseScraper):
                 'location': location_date,
                 'fuel_type': fuel_type,
                 'transmission': transmission,
-                'description': "", # Detailed description requires opening the page
+                'description': all_text, # Use visible text for keyword analysis
                 'images': {'main': image_url} if image_url else None,
             }
         
