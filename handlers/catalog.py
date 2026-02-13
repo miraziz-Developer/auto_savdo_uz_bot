@@ -289,8 +289,17 @@ async def cheap_deals_handler(message: Message):
 
 async def show_scraped_deal(message: Message, deal):
     """Display a scraped listing"""
-    score = getattr(deal, 'deal_score', 50)
-    if not score: score = 50
+    score = getattr(deal, 'deal_score', None)
+    if score is None:
+        # Calculate on the fly if not present
+        score = 50
+        if getattr(deal, 'is_good_deal', False): score += 20
+        desc = (deal.description or "").lower()
+        if 'srochno' in desc or 'tez' in desc: score += 10
+        if 'naqd' in desc: score += 5
+        if 'ideal' in desc: score += 10
+        if 'kraska' in desc or 'dtp' in desc: score -= 20
+        score = min(100, max(0, score))
     emoji = "🔥" if score > 80 else "⭐"
     
     desc_short = (deal.description or "")[:150].replace('\n', ' ')

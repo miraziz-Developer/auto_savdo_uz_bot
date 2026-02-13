@@ -272,3 +272,9 @@ class OLXScraper(BaseScraper):
                 year = max(valid_years)
         
         return brand, model, year
+
+    def parse_listing(self, element) -> Optional[Dict]:
+        """
+        Abstract method implementation (unused in new navigation logic)
+        """
+        return None

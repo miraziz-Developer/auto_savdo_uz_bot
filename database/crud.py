@@ -384,8 +384,7 @@ async def check_listing_status(session: AsyncSession, external_id: str, new_pric
         
         # Update price in DB
         existing.price = new_price
-        existing.updated_at = datetime.utcnow() # We need updated_at column? Base model has it? ScrapedListing might not.
-        # ScrapedListing has scraped_at. Let's update scraped_at.
+        # ScrapedListing has scraped_at
         existing.scraped_at = datetime.utcnow()
         existing.is_processed = False # Mark as unprocessed so we can re-notify? 
         # Actually, we should handle notification here or return status.
