@@ -597,8 +597,33 @@ async def cancel_broadcast(callback: CallbackQuery, state: FSMContext):
 
 @router.message(F.text == "🔍 Parsing Dashboard")
 async def parsing_dashboard(message: Message):
+    """Show parsing dashboard with real stats"""
     if not await check_admin(message.from_user.id): return
-    await message.answer("🛸 **Parsing Dashboard**\n\nScraperlar holati: ✅ Ishlayapti\nOxirgi yangilanish: Hozirgina")
+    
+    msg = await message.answer("� Ma'lumotlar yuklanmoqda...")
+    
+    from database.crud import get_market_stats
+    async with async_session_maker() as session:
+        stats = await get_market_stats(session)
+    
+    text = f"""�🛸 **Parsing Dashboard**
+
+✅ Scraperlar holati: **Aktiv**
+
+📊 **Statistika (So'nggi 7 kun):**
+🆕 Bugungi yangiliklar: **{stats['new_today']} ta**
+📦 Jami faol e'lonlar: **{stats['total_listings']} ta**
+
+💰 **O'rtacha narxlar (Bozor):**
+• Gentra: **{stats['avg_prices'].get('Gentra', 0):,.0f} $**
+• Cobalt: **{stats['avg_prices'].get('Cobalt', 0):,.0f} $**
+• Spark: **{stats['avg_prices'].get('Spark', 0):,.0f} $**
+• Nexia 3: **{stats['avg_prices'].get('Nexia', 0):,.0f} $**
+• Malibu 2: **{stats['avg_prices'].get('Malibu', 0):,.0f} $**
+
+<i>Eslatma: Agar 'Bugungi yangiliklar' 0 bo'lsa, demak yangi e'lonlar chiqmagan yoki hammasi eski (dublikat).</i>
+"""
+    await msg.edit_text(text, parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("stats:"))

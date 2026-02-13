@@ -378,16 +378,16 @@ async def check_listing_status(session: AsyncSession, external_id: str, new_pric
     if not existing:
         return {'exists': False, 'price_changed': False, 'old_price': 0}
     
+    # Always update last seen time (so we know it's still active)
+    existing.scraped_at = datetime.utcnow()
+    
     # If exists, check price
     if abs(existing.price - new_price) > 1: # Ignore tiny floating point diffs
         old_price = existing.price
         
         # Update price in DB
         existing.price = new_price
-        # ScrapedListing has scraped_at
-        existing.scraped_at = datetime.utcnow()
-        existing.is_processed = False # Mark as unprocessed so we can re-notify? 
-        # Actually, we should handle notification here or return status.
+        existing.is_processed = False # Mark as unprocessed to re-evaluate deal score?
         
         await session.commit()
         
@@ -401,7 +401,8 @@ async def check_listing_status(session: AsyncSession, external_id: str, new_pric
             'change_type': change_type,
             'diff': abs(diff)
         }
-        
+    
+    await session.commit()
     return {'exists': True, 'price_changed': False, 'old_price': existing.price}
 
 
