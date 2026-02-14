@@ -5,8 +5,6 @@ services:
     env: docker
     plan: free
     region: frankfurt
-    buildCommand: docker build -t bot .
-    startCommand: supervisord -c /etc/supervisord.conf
     envVars:
       - key: BOT_TOKEN
         sync: false
