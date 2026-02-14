@@ -1,7 +1,7 @@
 """
 Configuration settings for the car sales bot
 """
-from typing import List
+from typing import List, Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
@@ -12,28 +12,33 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        case_sensitive=False
+        case_sensitive=False,
+        extra="ignore"  # Ignore undefined env vars
     )
     
     # Bot Configuration
     bot_token: str = Field(..., alias="BOT_TOKEN")
-    admin_ids: str = Field(..., alias="ADMIN_IDS")
+    admin_ids: str = Field(default="", alias="ADMIN_IDS")
     payment_provider_token: str = Field(default="", alias="PAYMENT_PROVIDER_TOKEN")
     
     # Database
     db_host: str = Field(default="localhost", alias="DB_HOST")
     db_port: int = Field(default=5432, alias="DB_PORT")
-    db_name: str = Field(..., alias="DB_NAME")
-    db_user: str = Field(..., alias="DB_USER")
-    db_password: str = Field(..., alias="DB_PASSWORD")
+    db_name: str = Field(default="avtosavdo", alias="DB_NAME")
+    db_user: str = Field(default="postgres", alias="DB_USER")
+    db_password: str = Field(default="", alias="DB_PASSWORD")
+    
+    # Direct URL (from Render/Railway)
+    database_url_env: Optional[str] = Field(default=None, alias="DATABASE_URL")
     
     # Redis
     redis_host: str = Field(default="localhost", alias="REDIS_HOST")
     redis_port: int = Field(default=6379, alias="REDIS_PORT")
     redis_db: int = Field(default=0, alias="REDIS_DB")
+    redis_url_env: Optional[str] = Field(default=None, alias="REDIS_URL")
     
     # Channels
-    telegram_channel_id: str = Field(..., alias="TELEGRAM_CHANNEL_ID")
+    telegram_channel_id: str = Field(default="", alias="TELEGRAM_CHANNEL_ID")
     scraped_deals_channel_id: str = Field(default="", alias="SCRAPED_DEALS_CHANNEL_ID")
     admin_cars_channel_id: str = Field(default="", alias="ADMIN_CARS_CHANNEL_ID")
     instagram_api_token: str = Field(default="", alias="INSTAGRAM_API_TOKEN")
@@ -54,23 +59,44 @@ class Settings(BaseSettings):
     @property
     def database_url(self) -> str:
         """PostgreSQL connection string"""
+        if self.database_url_env:
+            # Fix for SQLAlchemy: replace postgres:// with postgresql+asyncpg://
+            url = self.database_url_env
+            if url.startswith("postgres://"):
+                url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+            elif url.startswith("postgresql://") and "+asyncpg" not in url:
+                 url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            return url
+            
         return f"postgresql+asyncpg://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
     
     @property
     def database_url_sync(self) -> str:
         """PostgreSQL connection string (Sync)"""
+        if self.database_url_env:
+            url = self.database_url_env
+            if url.startswith("postgres://"):
+                return url.replace("postgres://", "postgresql://", 1)
+            return url
+            
         return f"postgresql://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
     
     @property
     def redis_url(self) -> str:
         """Redis connection string"""
+        if self.redis_url_env:
+            return self.redis_url_env
         return f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
     
     @property
     def admin_list(self) -> List[int]:
         """Parse admin IDs from comma-separated string"""
-        return [int(admin_id.strip()) for admin_id in self.admin_ids.split(",")]
-
+        if not self.admin_ids:
+            return []
+        try:
+            return [int(admin_id.strip()) for admin_id in self.admin_ids.split(",")]
+        except ValueError:
+            return []
 
 # Global settings instance
 settings = Settings()
