@@ -1,0 +1,86 @@
+services:
+  # 1. Asosiy Bot (Web Service)
+  - type: web
+    name: avtosavdo-bot
+    env: docker
+    plan: free
+    region: frankfurt
+    buildCommand: docker build -t bot .
+    startCommand: python3 bot.py
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: avtosavdo-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: avtosavdo-redis
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: redis
+          name: avtosavdo-redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: redis
+          name: avtosavdo-redis
+          property: connectionString
+
+  # 2. Celery Worker (Background Tasks)
+  - type: worker
+    name: avtosavdo-worker
+    env: docker
+    plan: free
+    region: frankfurt
+    buildCommand: docker build -t worker .
+    startCommand: celery -A tasks.celery_tasks worker --loglevel=info
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: avtosavdo-db
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: redis
+          name: avtosavdo-redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: redis
+          name: avtosavdo-redis
+          property: connectionString
+
+  # 3. Celery Beat (Scheduler)
+  - type: worker
+    name: avtosavdo-beat
+    env: docker
+    plan: free
+    region: frankfurt
+    buildCommand: docker build -t beat .
+    startCommand: celery -A tasks.celery_tasks beat --loglevel=info
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: avtosavdo-db
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: redis
+          name: avtosavdo-redis
+          property: connectionString
+
+# Ma'lumotlar bazasi (PostgreSQL)
+databases:
+  - name: avtosavdo-db
+    plan: free
+    databaseName: avtosavdo
+    user: avtosavdo_user
+
+# Kesh (Redis) - Renderda Redis bepul emas, shuning uchun 'internal' redis o'rniga
+# 'redis-server' ni Dockerfile ichida ishlatish yoki tashqi bepul redis (Upstash) ulash kerak.
+# Lekin Renderda 'Redis' service bor (faqat 3 oy tekin yoki pullik).
+# Eng yaxshisi: Biz Redisni 'avtosavdo-bot' ichida ishlatamiz (supervisord bilan).
