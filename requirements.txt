@@ -12,3 +12,4 @@ loguru
 python-dotenv
 aiohttp
 requests
+pydantic-settings
