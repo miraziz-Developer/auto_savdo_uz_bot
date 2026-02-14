@@ -1,5 +1,5 @@
 """
-CRUD operations for database models
+CRUD operations for database models — Enhanced with Lead Scoring, Follow-ups, Pipeline
 """
 from typing import Optional, List
 import re
@@ -8,12 +8,15 @@ from sqlalchemy import select, update, delete, and_, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from loguru import logger
 
-from database.models import User, Car, SoldCar, Subscription, Inquiry, ScrapedListing, Favorite, Review
-
+from database.models import (
+    User, Car, SoldCar, Subscription, Inquiry, ScrapedListing,
+    Favorite, Review, BuyRequest, FollowUp, ContactLog
+)
 
 from config import settings
 
-# User CRUD
+# ====== USER CRUD ======
+
 async def get_or_create_user(session: AsyncSession, telegram_id: int, username: Optional[str] = None, 
                              full_name: Optional[str] = None) -> User:
     """Get existing user or create new one"""
@@ -22,7 +25,6 @@ async def get_or_create_user(session: AsyncSession, telegram_id: int, username: 
     )
     user = result.scalar_one_or_none()
     
-    # Check if this user should be an admin based on config
     should_be_admin = telegram_id in settings.admin_list
     
     if not user:
@@ -30,14 +32,14 @@ async def get_or_create_user(session: AsyncSession, telegram_id: int, username: 
             telegram_id=telegram_id,
             username=username,
             full_name=full_name,
-            is_admin=should_be_admin
+            is_admin=should_be_admin,
+            source="telegram"
         )
         session.add(user)
         await session.commit()
         await session.refresh(user)
         logger.info(f"New user created: {telegram_id} (Admin: {should_be_admin})")
     else:
-        # Update last activity (only if > 60 seconds passed) and ensure admin status is synced
         now = datetime.utcnow()
         if not user.last_activity or (now - user.last_activity).total_seconds() > 60:
             user.last_activity = now
@@ -46,9 +48,22 @@ async def get_or_create_user(session: AsyncSession, telegram_id: int, username: 
             user.is_admin = should_be_admin
             logger.info(f"User {telegram_id} admin status updated to: {should_be_admin}")
             
+        if username and user.username != username:
+            user.username = username
+        if full_name and user.full_name != full_name:
+            user.full_name = full_name
+            
         await session.commit()
     
     return user
+
+
+async def get_user_by_id(session: AsyncSession, telegram_id: int) -> Optional[User]:
+    """Get user by telegram ID"""
+    result = await session.execute(
+        select(User).where(User.telegram_id == telegram_id)
+    )
+    return result.scalar_one_or_none()
 
 
 async def update_user_phone(session: AsyncSession, telegram_id: int, phone: str):
@@ -59,10 +74,43 @@ async def update_user_phone(session: AsyncSession, telegram_id: int, phone: str)
     await session.commit()
 
 
+async def update_user_lead_data(session: AsyncSession, telegram_id: int, **kwargs):
+    """Update user lead scoring data"""
+    await session.execute(
+        update(User).where(User.telegram_id == telegram_id).values(**kwargs)
+    )
+    await session.commit()
+
+
+async def increment_user_views(session: AsyncSession, telegram_id: int):
+    """Increment user total views"""
+    await session.execute(
+        update(User).where(User.telegram_id == telegram_id).values(
+            total_views=User.total_views + 1
+        )
+    )
+    await session.commit()
+
+
 async def get_all_users(session: AsyncSession) -> List[User]:
     """Get all registered users"""
-    result = await session.execute(select(User))
+    result = await session.execute(select(User).where(User.is_blocked == False))
     return result.scalars().all()
+
+
+async def get_hot_leads(session: AsyncSession, min_score: int = 60, limit: int = 20) -> List[User]:
+    """Get hot leads — yuqori ball olgan mijozlar"""
+    result = await session.execute(
+        select(User)
+        .where(
+            User.is_blocked == False,
+            User.is_admin == False,
+            User.lead_score >= min_score
+        )
+        .order_by(User.lead_score.desc())
+        .limit(limit)
+    )
+    return list(result.scalars().all())
 
 
 async def toggle_user_block(session: AsyncSession, telegram_id: int):
@@ -76,20 +124,30 @@ async def toggle_user_block(session: AsyncSession, telegram_id: int):
     return None
 
 
+async def update_user_conversion(session: AsyncSession, telegram_id: int, status: str, notes: Optional[str] = None):
+    """Update user conversion status"""
+    values = {"conversion_status": status}
+    if notes:
+        values["admin_notes"] = notes
+    values["last_contacted_at"] = datetime.utcnow()
+    await session.execute(
+        update(User).where(User.telegram_id == telegram_id).values(**values)
+    )
+    await session.commit()
+
+
 async def is_admin(session: AsyncSession, telegram_id: int) -> bool:
     """Check if user is admin"""
-    # Priority: Settings config
     if telegram_id in settings.admin_list:
         return True
-        
-    # Fallback: Database
     result = await session.execute(
         select(User.is_admin).where(User.telegram_id == telegram_id)
     )
     return result.scalar_one_or_none() or False
 
 
-# Car CRUD
+# ====== CAR CRUD ======
+
 async def create_car(session: AsyncSession, **kwargs) -> Car:
     """Create new car listing"""
     car = Car(**kwargs)
@@ -170,6 +228,27 @@ async def update_car(session: AsyncSession, car_id: int, **kwargs):
     await session.commit()
 
 
+async def update_car_pipeline(session: AsyncSession, car_id: int, status: str):
+    """Update car pipeline status"""
+    await session.execute(
+        update(Car).where(Car.id == car_id).values(
+            pipeline_status=status,
+            pipeline_updated_at=datetime.utcnow()
+        )
+    )
+    await session.commit()
+
+
+async def get_cars_by_pipeline(session: AsyncSession, status: Optional[str] = None) -> List[Car]:
+    """Get cars by pipeline status"""
+    query = select(Car).where(Car.is_available == True)
+    if status:
+        query = query.where(Car.pipeline_status == status)
+    query = query.order_by(Car.pipeline_updated_at.desc().nullslast(), Car.created_at.desc())
+    result = await session.execute(query)
+    return list(result.scalars().all())
+
+
 async def increment_car_views(session: AsyncSession, car_id: int):
     """Increment car view count"""
     await session.execute(
@@ -178,7 +257,8 @@ async def increment_car_views(session: AsyncSession, car_id: int):
     await session.commit()
 
 
-# Subscription CRUD
+# ====== SUBSCRIPTION CRUD ======
+
 async def create_subscription(session: AsyncSession, user_id: int, **criteria) -> Subscription:
     """Create user subscription for car alerts"""
     subscription = Subscription(user_id=user_id, **criteria)
@@ -211,7 +291,6 @@ async def find_matching_subscriptions(session: AsyncSession, car: Car) -> List[S
     """Find subscriptions matching the car"""
     query = select(Subscription).where(Subscription.is_active == True)
     
-    # Build filter conditions
     conditions = []
     
     if car.brand:
@@ -265,21 +344,24 @@ async def find_matching_subscriptions(session: AsyncSession, car: Car) -> List[S
     return list(result.scalars().all())
 
 
-# Inquiry CRUD
+# ====== INQUIRY CRUD ======
+
 async def create_inquiry(session: AsyncSession, user_id: int, inquiry_type: str, **kwargs) -> Inquiry:
-    """Create customer inquiry"""
+    """Create customer inquiry with lead scoring"""
     inquiry = Inquiry(user_id=user_id, inquiry_type=inquiry_type, **kwargs)
     session.add(inquiry)
     await session.commit()
     await session.refresh(inquiry)
-    logger.info(f"New inquiry created: {inquiry_type} from user {user_id}")
+    logger.info(f"New inquiry created: {inquiry_type} from user {user_id} (Score: {inquiry.lead_score})")
     return inquiry
 
 
 async def get_pending_inquiries(session: AsyncSession) -> List[Inquiry]:
-    """Get pending inquiries for admin"""
+    """Get pending inquiries for admin — sorted by lead score (highest first)"""
     result = await session.execute(
-        select(Inquiry).where(Inquiry.status == "pending").order_by(Inquiry.created_at.desc())
+        select(Inquiry)
+        .where(Inquiry.status.in_(["pending", "processing"]))
+        .order_by(Inquiry.lead_score.desc(), Inquiry.created_at.desc())
     )
     return list(result.scalars().all())
 
@@ -316,7 +398,267 @@ async def delete_inquiry(session: AsyncSession, inquiry_id: int):
     await session.commit()
 
 
-# Sold Car CRUD
+async def get_inquiries_needing_followup(session: AsyncSession) -> List[Inquiry]:
+    """Get inquiries that need follow-up"""
+    now = datetime.utcnow()
+    result = await session.execute(
+        select(Inquiry).where(
+            Inquiry.status.in_(["pending", "processing"]),
+            or_(
+                Inquiry.next_followup_at.is_(None),
+                Inquiry.next_followup_at <= now
+            )
+        ).order_by(Inquiry.lead_score.desc())
+    )
+    return list(result.scalars().all())
+
+
+# ====== BUY REQUEST CRUD ======
+
+async def create_buy_request(session: AsyncSession, user_id: int, **kwargs) -> BuyRequest:
+    """Create buy request"""
+    buy_request = BuyRequest(user_id=user_id, **kwargs)
+    session.add(buy_request)
+    await session.commit()
+    await session.refresh(buy_request)
+    logger.info(f"New buy request from user {user_id}: {kwargs.get('brand', '?')} {kwargs.get('model', '?')}")
+    return buy_request
+
+
+async def get_pending_buy_requests(session: AsyncSession) -> List[BuyRequest]:
+    """Get pending buy requests — sorted by score"""
+    result = await session.execute(
+        select(BuyRequest)
+        .where(BuyRequest.status.in_(["pending", "searching"]))
+        .order_by(BuyRequest.lead_score.desc(), BuyRequest.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def get_buy_request_by_id(session: AsyncSession, request_id: int) -> Optional[BuyRequest]:
+    """Get buy request by ID"""
+    result = await session.execute(select(BuyRequest).where(BuyRequest.id == request_id))
+    return result.scalar_one_or_none()
+
+
+async def update_buy_request_status(session: AsyncSession, request_id: int, status: str, admin_notes: Optional[str] = None):
+    """Update buy request status"""
+    values = {"status": status, "updated_at": datetime.utcnow()}
+    if admin_notes:
+        values["admin_notes"] = admin_notes
+    await session.execute(
+        update(BuyRequest).where(BuyRequest.id == request_id).values(**values)
+    )
+    await session.commit()
+
+
+async def get_user_buy_requests(session: AsyncSession, user_id: int) -> List[BuyRequest]:
+    """Get user's buy requests"""
+    result = await session.execute(
+        select(BuyRequest).where(BuyRequest.user_id == user_id).order_by(BuyRequest.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def find_matching_cars_for_request(session: AsyncSession, request: BuyRequest) -> List[Car]:
+    """Find cars matching a buy request"""
+    query = select(Car).where(Car.is_available == True)
+    
+    if request.brand:
+        query = query.where(Car.brand.ilike(f"%{request.brand}%"))
+    if request.model:
+        query = query.where(Car.model.ilike(f"%{request.model}%"))
+    if request.year_from:
+        query = query.where(Car.year >= request.year_from)
+    if request.year_to:
+        query = query.where(Car.year <= request.year_to)
+    if request.budget_min:
+        query = query.where(Car.price >= request.budget_min)
+    if request.budget_max:
+        query = query.where(Car.price <= request.budget_max)
+    if request.transmission:
+        query = query.where(Car.transmission.ilike(f"%{request.transmission}%"))
+    
+    query = query.order_by(Car.created_at.desc()).limit(10)
+    result = await session.execute(query)
+    return list(result.scalars().all())
+
+
+async def get_buy_requests_needing_followup(session: AsyncSession) -> List[BuyRequest]:
+    """Get buy requests needing follow-up"""
+    now = datetime.utcnow()
+    result = await session.execute(
+        select(BuyRequest).where(
+            BuyRequest.status.in_(["pending", "searching", "found_options"]),
+            or_(
+                BuyRequest.next_followup_at.is_(None),
+                BuyRequest.next_followup_at <= now
+            )
+        ).order_by(BuyRequest.lead_score.desc())
+    )
+    return list(result.scalars().all())
+
+
+# ====== FOLLOW-UP CRUD ======
+
+async def create_followup(session: AsyncSession, **kwargs) -> FollowUp:
+    """Create a follow-up entry"""
+    followup = FollowUp(**kwargs)
+    session.add(followup)
+    await session.commit()
+    await session.refresh(followup)
+    return followup
+
+
+async def get_pending_followups(session: AsyncSession) -> List[FollowUp]:
+    """Get pending follow-ups that need to be sent"""
+    now = datetime.utcnow()
+    result = await session.execute(
+        select(FollowUp).where(
+            FollowUp.is_sent == False,
+            FollowUp.scheduled_at <= now
+        ).order_by(FollowUp.scheduled_at.asc())
+    )
+    return list(result.scalars().all())
+
+
+async def mark_followup_sent(session: AsyncSession, followup_id: int):
+    """Mark follow-up as sent"""
+    await session.execute(
+        update(FollowUp).where(FollowUp.id == followup_id).values(
+            is_sent=True,
+            sent_at=datetime.utcnow()
+        )
+    )
+    await session.commit()
+
+
+async def schedule_followups_for_inquiry(session: AsyncSession, inquiry_id: int, user_id: int):
+    """Schedule automatic follow-ups for an inquiry"""
+    now = datetime.utcnow()
+    
+    followups = [
+        # 1 soatdan keyin — ariza qabul qilindi
+        FollowUp(
+            user_id=user_id,
+            target_type="inquiry",
+            target_id=inquiry_id,
+            message_type="received",
+            message_text="✅ Arizangiz qabul qilindi! Mutaxassislarimiz ko'rib chiqmoqda. Tez orada siz bilan bog'lanamiz. 📞",
+            scheduled_at=now + timedelta(minutes=5),  # 5 minutdan keyin
+        ),
+        # 24 soat — eslatma
+        FollowUp(
+            user_id=user_id,
+            target_type="inquiry",
+            target_id=inquiry_id,
+            message_type="reminder_24h",
+            message_text="👋 Assalomu alaykum! Arizangiz bo'yicha ishlamoqdamiz. Mutaxassislarimiz tez orada siz bilan aloqaga chiqadi. Sabringiz uchun rahmat! 🙏",
+            scheduled_at=now + timedelta(hours=24),
+        ),
+        # 3 kundan keyin — follow-up
+        FollowUp(
+            user_id=user_id,
+            target_type="inquiry",
+            target_id=inquiry_id,
+            message_type="followup_3d",
+            message_text="🚗 Qanday ahvol? Moshina masalasi hal bo'ldimi? Agar savollaringiz bo'lsa, biz doim yordamga tayyormiz! \n\n📞 Admin: @avtosavdo_admin",
+            scheduled_at=now + timedelta(days=3),
+        ),
+        # 7 kundan keyin — boshqa variant kerakmi
+        FollowUp(
+            user_id=user_id,
+            target_type="inquiry",
+            target_id=inquiry_id,
+            message_type="followup_7d",
+            message_text="🌟 Sizga boshqa moshina variantlari kerakmi? Yangi takliflarimiz bor!\n\nKatalogni ko'rish uchun /start bosing yoki to'g'ridan-to'g'ri yozing: @avtosavdo_admin 📲",
+            scheduled_at=now + timedelta(days=7),
+        ),
+    ]
+    
+    for fu in followups:
+        session.add(fu)
+    
+    await session.commit()
+
+
+async def schedule_followups_for_buy_request(session: AsyncSession, request_id: int, user_id: int):
+    """Schedule automatic follow-ups for a buy request"""
+    now = datetime.utcnow()
+    
+    followups = [
+        FollowUp(
+            user_id=user_id,
+            target_type="buy_request",
+            target_id=request_id,
+            message_type="received",
+            message_text="✅ Sizning sotib olish arizangiz qabul qilindi! Mos variantlarni qidirib topamiz va darhol sizga xabar beramiz. 🔍",
+            scheduled_at=now + timedelta(minutes=5),
+        ),
+        FollowUp(
+            user_id=user_id,
+            target_type="buy_request",
+            target_id=request_id,
+            message_type="reminder_24h",
+            message_text="🔍 Sizning moshina qidiruvingiz davom etmoqda! Bozordagi eng yaxshi takliflarni tanlamoqdamiz. Tez orada natijalar tayyob bo'ladi! 🚗",
+            scheduled_at=now + timedelta(hours=24),
+        ),
+        FollowUp(
+            user_id=user_id,
+            target_type="buy_request",
+            target_id=request_id,
+            message_type="followup_3d",
+            message_text="🚗 Assalomu alaykum! Moshina qidiruvi davom etmoqda. Agar kriteryalaringizni o'zgartirmoqchi bo'lsangiz, bizga yozing!\n\n📞 @avtosavdo_admin",
+            scheduled_at=now + timedelta(days=3),
+        ),
+    ]
+    
+    for fu in followups:
+        session.add(fu)
+    
+    await session.commit()
+
+
+# ====== CONTACT LOG CRUD ======
+
+async def create_contact_log(session: AsyncSession, admin_id: int, user_id: int,
+                             contact_type: str, notes: Optional[str] = None,
+                             result: Optional[str] = None) -> ContactLog:
+    """Log a contact between admin and user"""
+    log = ContactLog(
+        admin_id=admin_id,
+        user_id=user_id,
+        contact_type=contact_type,
+        notes=notes,
+        result=result
+    )
+    session.add(log)
+    
+    # Update user's last_contacted_at
+    await session.execute(
+        update(User).where(User.telegram_id == user_id).values(
+            last_contacted_at=datetime.utcnow()
+        )
+    )
+    
+    await session.commit()
+    await session.refresh(log)
+    return log
+
+
+async def get_contact_history(session: AsyncSession, user_id: int, limit: int = 10) -> List[ContactLog]:
+    """Get contact history for a user"""
+    result = await session.execute(
+        select(ContactLog)
+        .where(ContactLog.user_id == user_id)
+        .order_by(ContactLog.created_at.desc())
+        .limit(limit)
+    )
+    return list(result.scalars().all())
+
+
+# ====== SOLD CAR CRUD ======
+
 async def create_sold_car(session: AsyncSession, **kwargs) -> SoldCar:
     """Record sold car"""
     sold_car = SoldCar(**kwargs)
@@ -336,7 +678,8 @@ async def get_sold_cars_last_30_days(session: AsyncSession) -> List[SoldCar]:
     return list(result.scalars().all())
 
 
-# Scraped Listing CRUD
+# ====== SCRAPED LISTING CRUD ======
+
 async def create_scraped_listing(session: AsyncSession, **kwargs) -> ScrapedListing:
     """Create scraped listing"""
     listing = ScrapedListing(**kwargs)
@@ -366,10 +709,7 @@ async def mark_listing_processed(session: AsyncSession, listing_id: int):
 
 
 async def check_listing_status(session: AsyncSession, external_id: str, new_price: float) -> dict:
-    """
-    Check if listing exists and if price changed.
-    Returns: {'exists': bool, 'price_changed': bool, 'old_price': float, 'message': str}
-    """
+    """Check if listing exists and if price changed"""
     result = await session.execute(
         select(ScrapedListing).where(ScrapedListing.external_id == external_id)
     )
@@ -378,17 +718,12 @@ async def check_listing_status(session: AsyncSession, external_id: str, new_pric
     if not existing:
         return {'exists': False, 'price_changed': False, 'old_price': 0}
     
-    # Always update last seen time (so we know it's still active)
     existing.scraped_at = datetime.utcnow()
     
-    # If exists, check price
-    if abs(existing.price - new_price) > 1: # Ignore tiny floating point diffs
+    if abs(existing.price - new_price) > 1:
         old_price = existing.price
-        
-        # Update price in DB
         existing.price = new_price
-        existing.is_processed = False # Mark as unprocessed to re-evaluate deal score?
-        
+        existing.is_processed = False
         await session.commit()
         
         diff = old_price - new_price
@@ -412,7 +747,6 @@ def extract_position(text: Optional[str]) -> Optional[str]:
         return None
     text = text.lower()
     
-    # Specific Trims
     if 'premier' in text: return 'premier'
     if 'redline' in text: return 'redline'
     if 'style' in text: return 'style'
@@ -422,7 +756,6 @@ def extract_position(text: Optional[str]) -> Optional[str]:
     if ' ls ' in text: return 'ls'
     if ' lt ' in text: return 'lt'
     
-    # Numeric positions (1-poz, 2-poz...)
     pos_match = re.search(r'\b(\d)\s*[-]?\s*(poz|evro)', text)
     if pos_match:
         return f"{pos_match.group(1)}-pozitsiya"
@@ -440,89 +773,96 @@ async def get_average_market_price(
     mileage: Optional[int] = None,
     description: Optional[str] = None
 ) -> float:
-    """
-    Calculate TRUE market price for Flipper Mode.
-    Filters by: Brand, Model, Year, Transmission, Mileage, Position/Trim.
-    Removes outliers (top/bottom 10%) to ignore junk/spam.
-    """
+    """Calculate TRUE market price for Flipper Mode"""
     
-    # 1. Base Query
     query = select(ScrapedListing.price, ScrapedListing.description, ScrapedListing.mileage).where(
         and_(
             func.lower(ScrapedListing.brand) == brand.lower(),
             func.lower(ScrapedListing.model) == model.lower(),
             ScrapedListing.year == year,
-            ScrapedListing.price > 2000  # Ignore junk
+            ScrapedListing.price > 2000
         )
     )
     
-    # 2. Transmission Filter
     if transmission:
-        # Loose matching for transmission
         if transmission.lower() in ['avtomat', 'automatic']:
              query = query.where(func.lower(ScrapedListing.transmission).in_(['avtomat', 'automatic']))
         elif transmission.lower() in ['mexanika', 'manual']:
              query = query.where(func.lower(ScrapedListing.transmission).in_(['mexanika', 'manual']))
 
     result = await session.execute(query)
-    rows = result.all() # [(price, desc, mileage), ...]
+    rows = result.all()
     
     if not rows:
         return 0.0
 
-    # 3. Post-Processing in Python (Filtering)
     filtered_prices = []
-    
     target_position = extract_position(description)
     
     for row in rows:
         r_price, r_desc, r_mileage = row
         
-        # A. Position Filter
         if target_position:
             r_pos = extract_position(r_desc)
-            # Only compare if positions match OR comparison listing has NO position (general)
-            # But for Flipper mode, we want strict comparison:
-            # If I sell '3-poz', I accept '3-poz' or 'elegant' or 'style'. I reject '1-poz'.
             if r_pos and r_pos != target_position:
                 continue
         
-        # B. Mileage Filter
         if mileage and r_mileage:
-            # If target has 50k km, compare with 30k-70k range
-            # If target has 0-5k (New), compare with 0-10k
-            
             diff = abs(mileage - r_mileage)
             if mileage < 10000:
                 if r_mileage > 20000: continue
             else:
-                if diff > 30000: continue # Too different
+                if diff > 30000: continue
         
         filtered_prices.append(r_price)
     
-    # Fallback: If filtering removed everything (e.g. rare trim), relax filters
     if len(filtered_prices) < 3:
-        # Reset and just take all with same transmission
         filtered_prices = [r[0] for r in rows]
         
     if not filtered_prices:
         return 0.0
         
-    # 4. Outlier Removal (Trim top/bottom 10%)
     filtered_prices.sort()
     count = len(filtered_prices)
     
     if count > 5:
-        trim_count = int(count * 0.1) # 10%
-        # Remove low (potential scams) and high (dreamers)
+        trim_count = int(count * 0.1)
         filtered_prices = filtered_prices[trim_count : count - trim_count]
         
     if not filtered_prices:
         return 0.0
         
-    # Calculate Average
     avg_price = sum(filtered_prices) / len(filtered_prices)
     return round(avg_price, 0)
+
+
+async def get_price_range(session: AsyncSession, brand: str, model: str, year: int) -> dict:
+    """Get min, max, avg price for a specific car"""
+    result = await session.execute(
+        select(
+            func.min(ScrapedListing.price).label('min_price'),
+            func.max(ScrapedListing.price).label('max_price'),
+            func.avg(ScrapedListing.price).label('avg_price'),
+            func.count(ScrapedListing.id).label('count')
+        ).where(
+            and_(
+                func.lower(ScrapedListing.brand) == brand.lower(),
+                func.lower(ScrapedListing.model) == model.lower(),
+                ScrapedListing.year == year,
+                ScrapedListing.price > 2000,
+                ScrapedListing.scraped_at >= datetime.utcnow() - timedelta(days=14)
+            )
+        )
+    )
+    row = result.one_or_none()
+    if row and row.count > 0:
+        return {
+            'min_price': float(row.min_price),
+            'max_price': float(row.max_price),
+            'avg_price': float(row.avg_price),
+            'count': row.count
+        }
+    return {'min_price': 0, 'max_price': 0, 'avg_price': 0, 'count': 0}
 
 
 # Analytics queries
@@ -548,10 +888,10 @@ async def get_top_sold_models(session: AsyncSession, limit: int = 10) -> List[di
     ]
 
 
-# Favorite CRUD
+# ====== FAVORITE CRUD ======
+
 async def add_to_favorites(session: AsyncSession, user_id: int, car_id: int) -> bool:
     """Add car to user's favorites"""
-    # Check if already in favorites
     result = await session.execute(
         select(Favorite).where(
             and_(Favorite.user_id == user_id, Favorite.car_id == car_id)
@@ -560,12 +900,11 @@ async def add_to_favorites(session: AsyncSession, user_id: int, car_id: int) -> 
     existing = result.scalar_one_or_none()
     
     if existing:
-        return False  # Already in favorites
+        return False
     
     favorite = Favorite(user_id=user_id, car_id=car_id)
     session.add(favorite)
     await session.commit()
-    logger.info(f"Car {car_id} added to favorites for user {user_id}")
     return True
 
 
@@ -577,7 +916,6 @@ async def remove_from_favorites(session: AsyncSession, user_id: int, car_id: int
         )
     )
     await session.commit()
-    logger.info(f"Car {car_id} removed from favorites for user {user_id}")
 
 
 async def get_user_favorites(session: AsyncSession, user_id: int) -> List[Car]:
@@ -601,10 +939,10 @@ async def is_favorite(session: AsyncSession, user_id: int, car_id: int) -> bool:
     return result.scalar_one_or_none() is not None
 
 
-# Review CRUD
+# ====== REVIEW CRUD ======
+
 async def create_review(session: AsyncSession, user_id: int, car_id: int, rating: int, comment: Optional[str] = None):
     """Create car review"""
-    # Check if user already reviewed this car
     result = await session.execute(
         select(Review).where(
             and_(Review.user_id == user_id, Review.car_id == car_id)
@@ -613,20 +951,16 @@ async def create_review(session: AsyncSession, user_id: int, car_id: int, rating
     existing = result.scalar_one_or_none()
     
     if existing:
-        # Update existing review
         existing.rating = rating
         existing.comment = comment
         existing.created_at = datetime.utcnow()
         await session.commit()
-        logger.info(f"Review updated for car {car_id} by user {user_id}")
         return existing
     
-    # Create new review
     review = Review(user_id=user_id, car_id=car_id, rating=rating, comment=comment)
     session.add(review)
     await session.commit()
     await session.refresh(review)
-    logger.info(f"New review created for car {car_id} by user {user_id}")
     return review
 
 
@@ -655,8 +989,7 @@ async def get_car_reviews(session: AsyncSession, car_id: int) -> List[dict]:
 async def get_car_average_rating(session: AsyncSession, car_id: int) -> float:
     """Get average rating for a car"""
     result = await session.execute(
-        select(func.avg(Review.rating))
-        .where(Review.car_id == car_id)
+        select(func.avg(Review.rating)).where(Review.car_id == car_id)
     )
     avg_rating = result.scalar_one_or_none()
     return float(avg_rating) if avg_rating else 0.0
@@ -665,17 +998,13 @@ async def get_car_average_rating(session: AsyncSession, car_id: int) -> float:
 async def get_car_review_count(session: AsyncSession, car_id: int) -> int:
     """Get review count for a car"""
     result = await session.execute(
-        select(func.count(Review.id))
-        .where(Review.car_id == car_id)
+        select(func.count(Review.id)).where(Review.car_id == car_id)
     )
     return result.scalar_one_or_none() or 0
 
 
 async def get_active_competitors_count(session: AsyncSession, brand: str, model: str, year: int, price: float) -> int:
-    """
-    Count direct competitors:
-    Same Brand, Model, Year, and Price within ±15% range.
-    """
+    """Count direct competitors"""
     lower_bound = price * 0.85
     upper_bound = price * 1.15
     
@@ -687,7 +1016,6 @@ async def get_active_competitors_count(session: AsyncSession, brand: str, model:
                 ScrapedListing.year == year,
                 ScrapedListing.price >= lower_bound,
                 ScrapedListing.price <= upper_bound,
-                # We assume listings scraped in last 7 days are "active"
                 ScrapedListing.scraped_at >= datetime.utcnow() - timedelta(days=7)
             )
         )
@@ -696,10 +1024,7 @@ async def get_active_competitors_count(session: AsyncSession, brand: str, model:
 
 
 async def find_similar_listing(session: AsyncSession, brand: str, model: str, year: int, price: float, current_source: str) -> Optional[ScrapedListing]:
-    """
-    Find potentially same car listing from a DIFFERENT source.
-    Criteria: Same Brand, Model, Year. Price ±2%, scraped recently.
-    """
+    """Find same car from different source"""
     time_limit = datetime.utcnow() - timedelta(days=5)
     
     result = await session.execute(
@@ -738,10 +1063,14 @@ async def get_market_stats(session: AsyncSession) -> dict:
     stats = {
         'total_listings': 0,
         'new_today': 0,
-        'avg_prices': {}
+        'avg_prices': {},
+        'total_users': 0,
+        'pending_inquiries': 0,
+        'pending_buy_requests': 0,
+        'active_subscriptions': 0
     }
     
-    # Total count
+    # Total listings
     total_res = await session.execute(
         select(func.count(ScrapedListing.id))
         .where(ScrapedListing.scraped_at >= datetime.utcnow() - timedelta(days=7))
@@ -755,7 +1084,29 @@ async def get_market_stats(session: AsyncSession) -> dict:
     )
     stats['new_today'] = new_res.scalar_one_or_none() or 0
     
-    # Avg price for popular models (Gentra, Cobalt, Nexia 3, Spark, Malibu 2)
+    # Total users
+    user_res = await session.execute(select(func.count(User.id)))
+    stats['total_users'] = user_res.scalar_one_or_none() or 0
+    
+    # Pending inquiries
+    inq_res = await session.execute(
+        select(func.count(Inquiry.id)).where(Inquiry.status == "pending")
+    )
+    stats['pending_inquiries'] = inq_res.scalar_one_or_none() or 0
+    
+    # Pending buy requests
+    buy_res = await session.execute(
+        select(func.count(BuyRequest.id)).where(BuyRequest.status == "pending")
+    )
+    stats['pending_buy_requests'] = buy_res.scalar_one_or_none() or 0
+    
+    # Active subscriptions
+    sub_res = await session.execute(
+        select(func.count(Subscription.id)).where(Subscription.is_active == True)
+    )
+    stats['active_subscriptions'] = sub_res.scalar_one_or_none() or 0
+    
+    # Avg price for popular models
     models = ['gentra', 'cobalt', 'nexia', 'spark', 'malibu']
     for m in models:
         avg_res = await session.execute(
@@ -791,13 +1142,70 @@ async def convert_inquiry_to_car(session: AsyncSession, inquiry_id: int, new_pri
         images=inquiry.images,
         is_available=True,
         source="inquiry",
-        external_id=f"inquiry_{inquiry.id}"
+        external_id=f"inquiry_{inquiry.id}",
+        pipeline_status="qabul"
     )
     session.add(new_car)
     
     inquiry.status = "completed"
-    # Commit handled by caller usually? No, CRUD should commit.
     await session.commit()
     await session.refresh(new_car)
     return new_car
 
+
+# ====== DASHBOARD STATS ======
+
+async def get_admin_dashboard_stats(session: AsyncSession) -> dict:
+    """Full admin dashboard statistics"""
+    now = datetime.utcnow()
+    week_ago = now - timedelta(days=7)
+    month_ago = now - timedelta(days=30)
+    
+    # Users
+    total_users_res = await session.execute(select(func.count(User.id)))
+    active_users_res = await session.execute(
+        select(func.count(User.id)).where(User.last_activity >= week_ago)
+    )
+    new_users_res = await session.execute(
+        select(func.count(User.id)).where(User.created_at >= month_ago)
+    )
+    hot_leads_res = await session.execute(
+        select(func.count(User.id)).where(User.lead_score >= 60, User.is_admin == False)
+    )
+    
+    # Cars
+    total_cars_res = await session.execute(select(func.count(Car.id)).where(Car.is_available == True))
+    
+    # Inquiries
+    pending_inq_res = await session.execute(
+        select(func.count(Inquiry.id)).where(Inquiry.status == "pending")
+    )
+    total_inq_month_res = await session.execute(
+        select(func.count(Inquiry.id)).where(Inquiry.created_at >= month_ago)
+    )
+    
+    # Buy Requests
+    pending_buy_res = await session.execute(
+        select(func.count(BuyRequest.id)).where(BuyRequest.status == "pending")
+    )
+    
+    # Sold
+    sold_month_res = await session.execute(
+        select(func.count(SoldCar.id)).where(SoldCar.sold_at >= month_ago)
+    )
+    profit_month_res = await session.execute(
+        select(func.sum(SoldCar.profit)).where(SoldCar.sold_at >= month_ago)
+    )
+    
+    return {
+        'total_users': total_users_res.scalar_one_or_none() or 0,
+        'active_users_7d': active_users_res.scalar_one_or_none() or 0,
+        'new_users_30d': new_users_res.scalar_one_or_none() or 0,
+        'hot_leads': hot_leads_res.scalar_one_or_none() or 0,
+        'total_cars': total_cars_res.scalar_one_or_none() or 0,
+        'pending_inquiries': pending_inq_res.scalar_one_or_none() or 0,
+        'total_inquiries_30d': total_inq_month_res.scalar_one_or_none() or 0,
+        'pending_buy_requests': pending_buy_res.scalar_one_or_none() or 0,
+        'sold_30d': sold_month_res.scalar_one_or_none() or 0,
+        'profit_30d': float(profit_month_res.scalar_one_or_none() or 0),
+    }

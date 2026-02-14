@@ -1,5 +1,5 @@
 """
-FSM States for bot conversations
+FSM States for bot conversations — Enhanced
 """
 from aiogram.fsm.state import State, StatesGroup
 
@@ -79,3 +79,47 @@ class AdminConvertStates(StatesGroup):
     """Admin: Convert inquiry to car"""
     waiting_for_price = State()
     waiting_for_confirmation = State()
+
+
+# ====== NEW STATES ======
+
+class BuyRequestStates(StatesGroup):
+    """User: Buy request — moshina olmoqchiman"""
+    waiting_for_brand = State()
+    waiting_for_model = State()
+    waiting_for_year = State()
+    waiting_for_budget = State()
+    waiting_for_transmission = State()
+    waiting_for_fuel = State()
+    waiting_for_color = State()
+    waiting_for_mileage = State()
+    waiting_for_notes = State()
+    waiting_for_phone = State()
+    confirm_request = State()
+
+
+class PriceCheckStates(StatesGroup):
+    """User: Price estimation — narxni baholash"""
+    waiting_for_brand = State()
+    waiting_for_model = State()
+    waiting_for_year = State()
+    waiting_for_transmission = State()
+    waiting_for_mileage = State()
+
+
+class PipelineStates(StatesGroup):
+    """Admin: Pipeline management"""
+    waiting_for_status = State()
+    waiting_for_notes = State()
+
+
+class ContactLogStates(StatesGroup):
+    """Admin: Log contact with client"""
+    waiting_for_type = State()
+    waiting_for_notes = State()
+    waiting_for_result = State()
+
+
+class AdminNoteStates(StatesGroup):
+    """Admin: Add note to user"""
+    waiting_for_note = State()

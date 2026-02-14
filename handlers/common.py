@@ -1,10 +1,12 @@
 """
-Common handlers for all users
+Common handlers — /start, /help, main menu
+Barcha foydalanuvchilar uchun umumiy buyruqlar
 """
 from aiogram import Router, F, Bot
 from aiogram.filters import Command, CommandStart
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
+from datetime import datetime
 from loguru import logger
 
 from config import settings
@@ -15,12 +17,12 @@ from keyboards.admin_keyboards import admin_main_menu_keyboard
 
 router = Router()
 
+
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
-    """Handle /start command"""
+    """Start command — Botga kirish"""
     await state.clear()
     
-    # Register or update user
     async with async_session_maker() as session:
         user = await get_or_create_user(
             session,
@@ -28,123 +30,135 @@ async def cmd_start(message: Message, state: FSMContext):
             username=message.from_user.username,
             full_name=message.from_user.full_name
         )
-        # DEBUG LOGS
-        logger.info(f"USER ID: {message.from_user.id}")
-        logger.info(f"ADMIN LIST: {settings.admin_list}")
-        
-        # Super simple check
-        user_is_admin = message.from_user.id in settings.admin_list
-        logger.info(f"IS ADMIN: {user_is_admin}")
+        user_is_admin = await is_admin(session, message.from_user.id)
     
-    # Welcome message
-    from aiogram.utils.markdown import hbold, hitalic
-    
-    first_name = message.from_user.first_name
-    welcome_text = f"""
-👋 <b>Assalomu alaykum, {hbold(first_name)}!</b>
-
-🚀 <b>AvtoSavdo</b> premium avtomobil platformasiga xush kelibsiz!
-
-Biz bilan siz:
-✅ <b>Premium katalog</b> — Eng sara avtomobillarni ko'rishingiz
-🔍 <b>Intellektual qidiruv</b> — Kerakli moshinani tezda topishingiz
-🔔 <b>Avtomatik xabarnoma</b> — Yangi e'lonlardan birinchilardan bo'lib xabardor bo'lishingiz
-💵 <b>Tezkor sotuv</b> — O'z avtomobilingizni qulay narxda sotishingiz mumkin
-
-📍 <i>Barcha narxlar <b>USD ($)</b> valyutasida ko'rsatiladi.</i>
-
-Davom etish uchun quyidagi menyudan foydalaning 👇
-"""
-    
-    try:
-        if user_is_admin:
-            welcome_text += "\n🔑 <b>Siz admin sifatida tizimga kirdingiz.</b>"
-            await message.answer(welcome_text, reply_markup=admin_main_menu_keyboard(), parse_mode="HTML")
-        else:
-            await message.answer(welcome_text, reply_markup=main_menu_keyboard(), parse_mode="HTML")
-        logger.info(f"Welcome message sent to {message.from_user.id}")
-    except Exception as e:
-        logger.error(f"Error sending welcome message to {message.from_user.id}: {e}")
-        # Fallback without HTML
-        await message.answer("Assalomu alaykum! Xush kelibsiz.", reply_markup=main_menu_keyboard())
-
-
-@router.message(F.text == "ℹ️ Yordam")
-async def help_handler(message: Message):
-    """Help command handler"""
-    help_text = """
-📖 <b>FOYDALANISH QO'LLANMASI</b>
-
-🧭 <b>Botning asosiy bo'limlari:</b>
-
-🚗 <b>Katalog</b> — Mavjud barcha avtomobillarni ko'zdan kechirish.
-🔍 <b>Qidiruv</b> — Marka, model, yil va narx bo'yicha saralash.
-🔔 <b>Obuna</b> — Sizga kerakli avtomobil paydo bo'lganda bot sizga xabar yuboradi.
-💰 <b>Mashina sotish</b> — Avtomobilingiz haqida ma'lumot qoldiring, biz uni sotishda yordam beramiz.
-
-💵 <b>Eslatma:</b> Barcha savdolar va hisob-kitoblar <b>USD ($)</b> kursida amalga oshiriladi.
-
-📞 <b>Texnik yordam:</b> @avtosavdo_admin
-🌐 <b>Saytimiz:</b> avtosavdo.uz
-
-<i>Bizni tanlaganingiz uchun rahmat!</i>
-"""
-    await message.answer(help_text, parse_mode="HTML")
-
-
-@router.message(F.text.in_(["🏠 Bosh menyu", "🏠 Asosiy menuga qaytish", "❌ Bekor qilish", "◀️ Orqaga"]))
-async def back_to_main_menu_text(message: Message, state: FSMContext):
-    """Return to main menu via text button"""
-    await state.clear()
-    user_is_admin = message.from_user.id in settings.admin_list
+    name = message.from_user.first_name or message.from_user.full_name
+    hour = datetime.now().hour
+    if 6 <= hour < 12:
+        greeting = "Xayrli tong"
+    elif 12 <= hour < 18:
+        greeting = "Xayrli kun"
+    elif 18 <= hour < 22:
+        greeting = "Xayrli kech"
+    else:
+        greeting = "Assalomu alaykum"
     
     if user_is_admin:
-        await message.answer("🔑 Admin bosh menyusi", reply_markup=admin_main_menu_keyboard())
+        text = (
+            f"🏠 <b>ADMIN BOSHQARUV PANELI</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"{greeting}, <b>{name}</b>! 👋\n\n"
+            f"📊 <b>Boshqaruv bo'limlari:</b>\n\n"
+            f"➕ <b>Moshina qo'shish</b> — yangi e'lon yaratish\n"
+            f"📋 <b>Pipeline</b> — sotish jarayonini kuzatish\n"
+            f"📥 <b>Murojaatlar</b> — yangi sotish/olish arizalari\n"
+            f"🛒 <b>Olish arizalari</b> — xaridorlar ro'yxati\n"
+            f"📊 <b>CRM Dashboard</b> — analitika va hisobotlar\n"
+            f"🔥 <b>Hot Leads</b> — eng jiddiy mijozlar\n"
+            f"📢 <b>Xabar yuborish</b> — barcha foydalanuvchilarga\n"
+            f"🔍 <b>Parsing Dashboard</b> — bozor kuzatuvi\n\n"
+            f"💡 <i>Oddiy foydalanuvchi rejimiga o'tish uchun pastdagi tugmani bosing</i>"
+        )
+        await message.answer(text, reply_markup=admin_main_menu_keyboard(), parse_mode="HTML")
     else:
-        await message.answer("🏠 Bosh menyu", reply_markup=main_menu_keyboard())
+        text = (
+            f"🚗 <b>AVTO SAVDO</b> — Moshinalar Oldi-Sotdi Boti\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"{greeting}, <b>{name}</b>! 👋\n\n"
+            f"Biz sizga eng yaxshi moshinani topishda\n"
+            f"va moshinangizni tez sotishda yordam beramiz!\n\n"
+            f"📌 <b>Asosiy imkoniyatlar:</b>\n\n"
+            f"🛒 <b>Moshina olish</b> — nimani xohlayotganingizni ayting,\n"
+            f"     biz sizga eng yaxshi variantlarni topamiz\n\n"
+            f"➕ <b>E'lon berish</b> — moshinangizni bozorga chiqaring\n\n"
+            f"🔍 <b>Qidiruv</b> — barcha moshinalar katalogi\n\n"
+            f"📊 <b>Narxni baholash</b> — bozor narxini real-time tekshiring\n\n"
+            f"📉 <b>Arzon variantlar</b> — bozordan past narxdagi takliflar\n\n"
+            f"🔔 <b>Obunalar</b> — yangi e'lonlardan darhol xabardor bo'ling\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"📞 Savol bo'lsa: @avtosavdo_admin\n"
+            f"📍 Toshkent shahri"
+        )
+        await message.answer(text, reply_markup=main_menu_keyboard(), parse_mode="HTML")
+
+
+@router.message(Command("help"))
+@router.message(F.text == "ℹ️ Yordam")
+async def cmd_help(message: Message):
+    """Yordam — Botning barcha imkoniyatlari"""
+    text = (
+        "ℹ️ <b>YORDAM — Bot imkoniyatlari</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        
+        "🛒 <b>Moshina olish</b>\n"
+        "Qaysi moshinani xohlaysiz? Brendini, modelini,\n"
+        "budjetini kiriting — mutaxassislarimiz sizga\n"
+        "eng mos variantlarni tanlashda yordam beradi.\n\n"
+        
+        "➕ <b>E'lon berish</b>\n"
+        "Moshinangizni sotishga qo'ying. Rasmlar bilan\n"
+        "birga joylang — tezroq buyer topiladi.\n"
+        "• Avto Savdo orqali — biz hamma narsani qilamiz\n"
+        "• Oddiy e'lon — o'zingiz joylaysiz\n\n"
+        
+        "🔍 <b>Qidiruv</b>\n"
+        "Barcha moshinalar katalogini brend, model,\n"
+        "yil va narx bo'yicha filtrlang.\n\n"
+        
+        "📊 <b>Narxni baholash</b>\n"
+        "Moshina brendini, modelini va yilini kiriting —\n"
+        "bozordagi haqiqiy narxni, min/max, likvidlikni\n"
+        "va sotish tavsiyasini ko'ring.\n\n"
+        
+        "📉 <b>Arzon variantlar</b>\n"
+        "Bozor narxidan past joylashtirilgan e'lonlar.\n"
+        "Savdogarlar uchun foydali imkoniyat!\n\n"
+        
+        "🔔 <b>Obunalar</b>\n"
+        "Qidiruv kriteriyalari bo'yicha obuna bo'ling —\n"
+        "mening shartlarimga mos yangi e'lon chiqqanda\n"
+        "sizga darhol xabar yuboriladi.\n\n"
+        
+        "❤️ <b>Sevimlilar</b>\n"
+        "Yoqtirgan moshinalaringizni saqlab, keyinroq\n"
+        "qaytib ko'rishingiz mumkin.\n\n"
+        
+        "📋 <b>Mening arizalarim</b>\n"
+        "Yuborgan olish arizalaringizning holatini\n"
+        "real-time kuzatib boring.\n\n"
+        
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "📞 Bog'lanish: @avtosavdo_admin\n"
+        "⏰ Ish vaqti: 09:00 — 21:00 (har kuni)\n"
+        "📍 Toshkent shahri"
+    )
+    await message.answer(text, reply_markup=main_menu_keyboard(), parse_mode="HTML")
+
+
+@router.message(F.text == "👤 Oddiy foydalanuvchi rejimi")
+async def switch_to_user_mode(message: Message):
+    """Admin → Oddiy foydalanuvchi rejimiga o'tish"""
+    await message.answer(
+        "👤 <b>Oddiy foydalanuvchi rejimiga o'tdingiz</b>\n\n"
+        "Admin paneliga qaytish uchun /start buyrug'ini yuboring.",
+        reply_markup=main_menu_keyboard(),
+        parse_mode="HTML"
+    )
 
 
 @router.callback_query(F.data == "main_menu")
-async def back_to_main_menu(callback: CallbackQuery, state: FSMContext, bot: Bot):
-    """Return to main menu"""
+async def back_to_main_menu(callback: CallbackQuery, state: FSMContext):
+    """Bosh menyuga qaytish"""
     await state.clear()
-    
-    user_is_admin = callback.from_user.id in settings.admin_list
-    
-    # Delete previous message to "switch" menus cleanly
-    try:
-        await bot.delete_message(callback.message.chat.id, callback.message.message_id)
-    except Exception:
-        pass
-        
-    if user_is_admin:
-        await bot.send_message(
-            callback.message.chat.id,
-            "🔑 Admin bosh menyusi",
-            reply_markup=admin_main_menu_keyboard()
-        )
-    else:
-        await bot.send_message(
-            callback.message.chat.id,
-            "🏠 Bosh menyu",
-            reply_markup=main_menu_keyboard()
-        )
+    await callback.message.answer(
+        "🏠 <b>Bosh menyu</b>",
+        reply_markup=main_menu_keyboard(),
+        parse_mode="HTML"
+    )
     await callback.answer()
 
 
-@router.callback_query(F.data == "need_phone")
-async def need_phone_handler(callback: CallbackQuery):
-    """Handler for when user needs to provide phone"""
-    await callback.answer(
-        "Bog'lanish uchun avval telefon raqamingizni yuboring",
-        show_alert=True
-    )
-
-@router.message(F.text == "📊 Narxni baholash")
-async def price_estimate_placeholder(message: Message):
-    """Placeholder for price estimate"""
-    await message.answer(
-        "🛠 <b>Bu bo'lim tez orada ishga tushadi!</b>\n\n"
-        "Hozircha siz <b>'📉 Arzon variantlar'</b> bo'limi orqali tayyor variantlarni ko'rishingiz mumkin.",
-        parse_mode="HTML"
-    )
+@router.callback_query(F.data == "noop")
+async def noop_callback(callback: CallbackQuery):
+    """No-op — o'chirilgan tugmalar uchun"""
+    await callback.answer()

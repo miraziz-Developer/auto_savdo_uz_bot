@@ -1,6 +1,7 @@
 """
 Admin handlers for car management
 """
+import asyncio
 from aiogram import Router, F, Bot
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton
@@ -42,9 +43,12 @@ async def start_add_car(message: Message, state: FSMContext):
         return
     
     await message.answer(
-        "🚗 **Yangi moshina qo'shish**\n\n"
-        "Moshina brendini kiriting (masalan: Chevrolet):",
-        reply_markup=cancel_keyboard()
+        "🚗 <b>YANGI MOSHINA QO'SHISH</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "🏷 <b>Moshina brendini kiriting:</b>\n"
+        "<i>Masalan: Chevrolet, Toyota, BMW</i>",
+        reply_markup=cancel_keyboard(),
+        parse_mode="HTML"
     )
     await state.set_state(AddCarStates.waiting_for_brand)
 
@@ -54,11 +58,16 @@ async def process_car_brand(message: Message, state: FSMContext):
     """Process car brand"""
     if message.text == "❌ Bekor qilish":
         await state.clear()
-        await message.answer("Bekor qilindi", reply_markup=admin_main_menu_keyboard())
+        await message.answer("❌ <b>Bekor qilindi</b>", reply_markup=admin_main_menu_keyboard(), parse_mode="HTML")
         return
     
     await state.update_data(brand=message.text)
-    await message.answer("Model nomini kiriting (masalan: Gentra):")
+    await message.answer(
+        f"✅ Brend: <b>{message.text}</b>\n\n"
+        "🚙 <b>Model nomini kiriting:</b>\n"
+        "<i>Masalan: Gentra, Camry</i>",
+        parse_mode="HTML"
+    )
     await state.set_state(AddCarStates.waiting_for_model)
 
 
@@ -66,7 +75,12 @@ async def process_car_brand(message: Message, state: FSMContext):
 async def process_car_model(message: Message, state: FSMContext):
     """Process car model"""
     await state.update_data(model=message.text)
-    await message.answer("Yilini kiriting (masalan: 2022):")
+    await message.answer(
+        f"✅ Model: <b>{message.text}</b>\n\n"
+        "📅 <b>Yilini kiriting:</b>\n"
+        "<i>Masalan: 2022</i>",
+        parse_mode="HTML"
+    )
     await state.set_state(AddCarStates.waiting_for_year)
 
 
@@ -88,10 +102,15 @@ async def process_car_price(message: Message, state: FSMContext):
     try:
         price = float(message.text.replace(" ", "").replace(",", ""))
         await state.update_data(price=price)
-        await message.answer("Probegini kiriting (km) yoki /skip:")
+        await message.answer(
+            f"✅ Narx: <b>{price:,.0f} $</b>\n\n"
+            "🛣 <b>Probegini kiriting (km):</b>\n"
+            "<i>Yoki /skip bosib o'tkazib yuboring</i>",
+            parse_mode="HTML"
+        )
         await state.set_state(AddCarStates.waiting_for_mileage)
     except ValueError:
-        await message.answer("❌ Iltimos, to'g'ri narx kiriting")
+        await message.answer("❌ Iltimos, to'g'ri narx kiriting", parse_mode="HTML")
 
 
 @router.message(AddCarStates.waiting_for_mileage)
@@ -105,7 +124,11 @@ async def process_car_mileage(message: Message, state: FSMContext):
             await message.answer("❌ Iltimos, to'g'ri probeg kiriting")
             return
     
-    await message.answer("Rangini kiriting yoki /skip:")
+    await message.answer(
+        "🎨 <b>Rangini kiriting:</b>\n"
+        "<i>Yoki /skip bosing</i>",
+        parse_mode="HTML"
+    )
     await state.set_state(AddCarStates.waiting_for_color)
 
 
@@ -115,7 +138,11 @@ async def process_car_color(message: Message, state: FSMContext):
     if message.text != "/skip":
         await state.update_data(color=message.text)
     
-    await message.answer("Tavsifini kiriting yoki /skip:")
+    await message.answer(
+        "📝 <b>Tavsifini kiriting:</b>\n"
+        "<i>Yoki /skip bosing</i>",
+        parse_mode="HTML"
+    )
     await state.set_state(AddCarStates.waiting_for_description)
 
 
@@ -125,7 +152,17 @@ async def process_car_description(message: Message, state: FSMContext):
     if message.text != "/skip":
         await state.update_data(description=message.text)
     
-    await message.answer("📸 <b>Moshina rasmlarini yuboring:</b>\n\nBirinchisi asosiy rasm bo'ladi. Yuborib bo'lgach <b>/done</b> yoki <b>Tayyor</b> tugmasini bosing.", reply_markup=ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="✅ Tayyor!")]], resize_keyboard=True), parse_mode="HTML")
+    await message.answer(
+        "📸 <b>Moshina rasmlarini yuboring</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Birinchi yuborilgan rasm — <b>asosiy rasm</b> bo'ladi.\n"
+        "Yuborib bo'lgach <b>✅ Tayyor!</b> tugmasini bosing.",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="✅ Tayyor!")]],
+            resize_keyboard=True
+        ),
+        parse_mode="HTML"
+    )
     await state.update_data(photos_list=[])
     await state.set_state(AddCarStates.waiting_for_images)
 
@@ -139,7 +176,7 @@ async def process_car_images(message: Message, state: FSMContext):
     await state.update_data(photos_list=photos)
     
     if len(photos) == 1:
-        await message.answer("Asosiy rasm olindi. Yana bo'lsa yuboring...")
+        await message.answer("✅ Asosiy rasm qabul qilindi. Yana rasmlarni yuboravering...")
 
 @router.message(AddCarStates.waiting_for_images, (F.text == "/done") | (F.text == "✅ Tayyor!") | (F.text == "/skip"))
 async def process_car_images_done(message: Message, state: FSMContext):
@@ -165,23 +202,27 @@ async def show_car_confirmation(message: Message, state: FSMContext):
     """Show car confirmation"""
     data = await state.get_data()
     
-    text = "✅ **Moshina ma'lumotlari:**\n\n"
-    text += f"🏷 Brend: {data['brand']}\n"
-    text += f"🚙 Model: {data['model']}\n"
-    text += f"📅 Yil: {data['year']}\n"
+    text = (
+        "✅ <b>MOSHINA MA'LUMOTLARI</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    )
+    text += f"🏷 Brend: <b>{data['brand']}</b>\n"
+    text += f"🚙 Model: <b>{data['model']}</b>\n"
+    text += f"📅 Yil: <b>{data['year']}</b>\n"
     text += f"💰 Narxi: <b>{data['price']:,.0f} $</b>\n"
     
     if data.get('mileage'):
-        text += f"📏 Probeg: {data['mileage']:,} km\n"
+        text += f"🛣 Probeg: <b>{data['mileage']:,} km</b>\n"
     if data.get('color'):
-        text += f"🎨 Rang: {data['color']}\n"
+        text += f"🎨 Rang: <b>{data['color']}</b>\n"
     if data.get('images'):
         photos_count = 1 + len(data['images'].get('gallery', []))
-        text += f"📸 Rasmlar: {photos_count} ta\n"
+        text += f"📸 Rasmlar: <b>{photos_count} ta</b>\n"
     if data.get('description'):
-        text += f"\n📝 Tavsif: {data['description']}\n"
+        text += f"\n📝 Tavsif: <i>{data['description']}</i>\n"
     
-    text += "\n\nSaqlashni tasdiqlaysizmi?"
+    text += "\n━━━━━━━━━━━━━━━━━━━━━━\n"
+    text += "✅ Saqlashni tasdiqlaysizmi?"
     
     await message.answer(text, reply_markup=confirm_keyboard("add_car"))
     await state.set_state(AddCarStates.confirm_car)
@@ -220,10 +261,19 @@ async def confirm_add_car(callback: CallbackQuery, state: FSMContext):
         await publish_admin_car(car_dict)
     
     await state.clear()
-    await callback.message.edit_text(f"✅ Moshina muvaffaqiyatli qo'shildi va kanalga joylandi!\n\nID: {car.id}")
+    await callback.message.edit_text(
+        f"✅ <b>Moshina muvaffaqiyatli qo'shildi!</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"🆔 ID: <b>{car.id}</b>\n"
+        f"🚗 {data['brand']} {data['model']} ({data['year']})\n"
+        f"💰 Narx: {data['price']:,.0f} $\n\n"
+        f"📢 Kanalga ham joylandi!",
+        parse_mode="HTML"
+    )
     await callback.message.answer(
-        "Bosh menyu:",
-        reply_markup=admin_main_menu_keyboard()
+        "🏠 <b>Bosh menyu</b>",
+        reply_markup=admin_main_menu_keyboard(),
+        parse_mode="HTML"
     )
 
 
@@ -291,11 +341,17 @@ async def list_cars_admin(message: Message):
         cars = await get_cars(session, limit=20)
     
     if not cars:
-        await message.answer("Moshinalar mavjud emas")
+        await message.answer(
+            "🚗 <b>Moshinalar mavjud emas</b>\n"
+            "Qo'shish uchun ➕ tugmasini bosing.",
+            reply_markup=admin_main_menu_keyboard(),
+            parse_mode="HTML"
+        )
         return
     
-    text = "🚗 **Moshinalar ro'yxati:**\n\n"
-    await message.answer(text)
+    text = "🚗 <b>MOSHINALAR RO'YXATI</b>\n"
+    text += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    await message.answer(text, parse_mode="HTML")
     
     # Also show detail for individual management (example with first car)
     if cars:
@@ -305,8 +361,8 @@ async def show_admin_car_details(message: Message, car_id: int):
     async with async_session_maker() as session:
         car = await get_car_by_id(session, car_id)
         if car:
-            text = f"⚙️ **Boshqarish:** {car.brand} {car.model} (ID: {car.id})"
-            await message.answer(text, reply_markup=car_management_keyboard(car.id))
+            text = f"⚙️ <b>Boshqarish:</b> {car.brand} {car.model} (ID: {car.id})"
+            await message.answer(text, reply_markup=car_management_keyboard(car.id), parse_mode="HTML")
 
 @router.callback_query(F.data.startswith("admin:car:delete:"))
 async def admin_delete_car(callback: CallbackQuery):
@@ -356,9 +412,11 @@ async def show_statistics(message: Message):
         return
     
     await message.answer(
-        "📊 **Statistika bo'limi**\n\n"
+        "📊 <b>STATISTIKA BO'LIMI</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
         "Quyidagi hisobotlardan birini tanlang:",
-        reply_markup=statistics_keyboard()
+        reply_markup=statistics_keyboard(),
+        parse_mode="HTML"
     )
 
 
@@ -373,17 +431,16 @@ async def generate_full_stats(callback: CallbackQuery):
     report = await analytics.generate_full_report()
     stats = await analytics.get_summary_stats()
     
-    # Send summary text
-    summary_text = f"""
-📊 **To'liq hisobot (30 kun)**
-
-📈 Jami sotuvlar: {stats['total_sales']} ta
-💰 Jami foyda: <b>{stats['total_profit']:,.0f} $</b>
-📊 O'rtacha foyda: <b>{stats['avg_profit']:,.0f} $</b>
-🏆 Eng yaxshi kun: {stats.get('best_day', 'N/A')} ({stats.get('best_day_count', 0)} ta)
-"""
+    summary_text = (
+        "📊 <b>TO'LIQ HISOBOT (30 kun)</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"📈 Jami sotuvlar: <b>{stats['total_sales']} ta</b>\n"
+        f"💰 Jami foyda: <b>{stats['total_profit']:,.0f} $</b>\n"
+        f"📊 O'rtacha foyda: <b>{stats['avg_profit']:,.0f} $</b>\n"
+        f"🏆 Eng yaxshi kun: <b>{stats.get('best_day', 'N/A')}</b> ({stats.get('best_day_count', 0)} ta)"
+    )
     
-    await callback.message.answer(summary_text)
+    await callback.message.answer(summary_text, parse_mode="HTML")
     
     # Send charts
     if report['daily_sales']:
@@ -411,27 +468,28 @@ async def show_inquiries(message: Message):
         inquiries = await get_pending_inquiries(session)
     
     if not inquiries:
-        await message.answer("Yangi murojaatlar yo'q ✅")
+        await message.answer(
+            "📥 <b>MUROJAATLAR</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "✅ Yangi murojaatlar yo'q!",
+            reply_markup=admin_main_menu_keyboard(),
+            parse_mode="HTML"
+        )
         return
     
-    text = "📥 **Yangi murojaatlar:**\n\n"
+    text = "📥 <b>YANGI MUROJAATLAR</b>\n"
+    text += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
     for inq in inquiries:
-        text += f"🆔 ID: {inq.id}\n"
-        text += f"👤 Mijoz ID: {inq.user_id}\n"
-        text += f"📝 Turi: {inq.inquiry_type.upper()}\n"
+        text = ""
+        text += f"🆔 Ariza: <b>#{inq.id}</b>\n"
+        text += f"👤 Mijoz ID: <code>{inq.user_id}</code>\n"
+        text += f"📝 Turi: <b>{inq.inquiry_type.upper()}</b>\n"
         if inq.brand:
-            text += f"🚗 Moshina: {inq.brand} {inq.model}\n"
+            text += f"🚗 Moshina: <b>{inq.brand} {inq.model}</b>\n"
         
-        await message.answer(text, reply_markup=inquiry_management_keyboard(inq.id))
+        await message.answer(text, reply_markup=inquiry_management_keyboard(inq.id), parse_mode="HTML")
 
 
-@router.message(F.text == "👤 Oddiy foydalanuvchi rejimi")
-async def switch_to_user_mode(message: Message):
-    """Switch to regular user mode"""
-    await message.answer(
-        "Oddiy foydalanuvchi rejimiga o'tildi",
-        reply_markup=main_menu_keyboard()
-    )
 
 
 @router.callback_query(F.data.startswith("inquiry:"))
@@ -444,12 +502,12 @@ async def inquiry_actions(callback: CallbackQuery):
         if action == "accept":
             await update_inquiry_status(session, inquiry_id, "processing")
             await callback.answer("✅ Qabul qilindi")
-            await callback.message.edit_text(callback.message.text + "\n\n👉 **HOLAT: JARAYONDA**")
+            await callback.message.edit_text(callback.message.text + "\n\n👉 <b>HOLAT: JARAYONDA</b>", parse_mode="HTML")
         
         elif action == "reject":
             await update_inquiry_status(session, inquiry_id, "rejected")
             await callback.answer("❌ Rad etildi")
-            await callback.message.edit_text(callback.message.text + "\n\n👉 **HOLAT: RAD ETILDI**")
+            await callback.message.edit_text(callback.message.text + "\n\n👉 <b>HOLAT: RAD ETILDI</b>", parse_mode="HTML")
             
         elif action == "accept": # Placeholder for 'complete' in keyboard if we add it
             pass 
@@ -477,7 +535,7 @@ async def complete_inquiry_and_publish(callback: CallbackQuery):
             )
             await update_inquiry_status(session, inquiry_id, "completed")
             await callback.answer("✅ Sotuv muvaffaqiyatli yakunlandi va rasm katalogga qo'shildi!")
-            await callback.message.edit_text(callback.message.text + f"\n\n🚀 **SOTILDI & KATALOGGA QO'SHILDI (ID: {car.id})**")
+            await callback.message.edit_text(callback.message.text + f"\n\n🚀 <b>SOTILDI & KATALOGGA QO'SHILDI (ID: {car.id})</b>", parse_mode="HTML")
         else:
             await callback.answer("Xatolik yoki moshina emas")
 
@@ -488,34 +546,40 @@ async def complete_inquiry_and_publish(callback: CallbackQuery):
 async def start_record_sale(message: Message, state: FSMContext):
     """Start recording a sale"""
     if not await check_admin(message.from_user.id): return
-    await message.answer("🚘 **Sotilgan moshina brendini yozing:**", reply_markup=cancel_keyboard())
+    await message.answer(
+        "🚘 <b>SOTUV QAYD ETISH</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "🏷 <b>Sotilgan moshina brendini yozing:</b>",
+        reply_markup=cancel_keyboard(),
+        parse_mode="HTML"
+    )
     await state.set_state(RecordSaleStates.waiting_for_brand)
 
 @router.message(RecordSaleStates.waiting_for_brand)
 async def record_sale_brand(message: Message, state: FSMContext):
     if message.text == "❌ Bekor qilish":
         await state.clear()
-        return await message.answer("Bekor qilindi", reply_markup=admin_main_menu_keyboard())
+        return await message.answer("❌ <b>Bekor qilindi</b>", reply_markup=admin_main_menu_keyboard(), parse_mode="HTML")
     await state.update_data(brand=message.text)
-    await message.answer("Modelini yozing:")
+    await message.answer("🚙 <b>Model nomini yozing:</b>", parse_mode="HTML")
     await state.set_state(RecordSaleStates.waiting_for_model)
 
 @router.message(RecordSaleStates.waiting_for_model)
 async def record_sale_model(message: Message, state: FSMContext):
     await state.update_data(model=message.text)
-    await message.answer("Yilini yozing:")
+    await message.answer("📅 <b>Yilini yozing:</b>", parse_mode="HTML")
     await state.set_state(RecordSaleStates.waiting_for_year)
 
 @router.message(RecordSaleStates.waiting_for_year)
 async def record_sale_year(message: Message, state: FSMContext):
     await state.update_data(year=int(message.text))
-    await message.answer("Qanchaga oluvdik? (Tan narxi, USD):")
+    await message.answer("💰 <b>Tan narxini kiriting (USD):</b>\n<i>Qanchaga olgan edingiz?</i>", parse_mode="HTML")
     await state.set_state(RecordSaleStates.waiting_for_purchase_price)
 
 @router.message(RecordSaleStates.waiting_for_purchase_price)
 async def record_sale_purchase_price(message: Message, state: FSMContext):
     await state.update_data(purchase_price=float(message.text))
-    await message.answer("Qanchaga sotdik? (Sotuv narxi, USD):")
+    await message.answer("💵 <b>Sotuv narxini kiriting (USD):</b>\n<i>Qanchaga sotdingiz?</i>", parse_mode="HTML")
     await state.set_state(RecordSaleStates.waiting_for_selling_price)
 
 @router.message(RecordSaleStates.waiting_for_selling_price)
@@ -536,7 +600,19 @@ async def record_sale_selling_price(message: Message, state: FSMContext, bot: Bo
         )
     
     await state.clear()
-    await message.answer(f"✅ Sotuv qayd etildi! Foyda: <b>{profit:,.0f} $</b>", reply_markup=admin_main_menu_keyboard(), parse_mode="HTML")
+    
+    profit_emoji = "🟢" if profit >= 0 else "🔴"
+    
+    await message.answer(
+        f"✅ <b>SOTUV QAYD ETILDI!</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"🚗 {data['brand']} {data['model']} ({data['year']})\n"
+        f"💰 Olish: <b>{data['purchase_price']:,.0f} $</b>\n"
+        f"💵 Sotish: <b>{sell_price:,.0f} $</b>\n\n"
+        f"{profit_emoji} Foyda: <b>{profit:,.0f} $</b>",
+        reply_markup=admin_main_menu_keyboard(),
+        parse_mode="HTML"
+    )
 @router.callback_query(F.data.startswith("scraped:"))
 async def scraped_listing_actions(callback: CallbackQuery):
     action = callback.data.split(":")[1]
@@ -555,24 +631,37 @@ async def scraped_listing_actions(callback: CallbackQuery):
 async def start_broadcast(message: Message, state: FSMContext):
     """Start broadcast"""
     if not await check_admin(message.from_user.id): return
-    await message.answer("📢 **Hamma foydalanuvchilarga yuboriladigan xabarni yozing:**\n\n(Rasm ham bo'lishi mumkin)", reply_markup=cancel_keyboard())
+    await message.answer(
+        "📢 <b>XABAR YUBORISH</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Hamma foydalanuvchilarga yuboriladigan\n"
+        "xabarni yozing.\n\n"
+        "<i>Rasm ham yuborishingiz mumkin</i>",
+        reply_markup=cancel_keyboard(),
+        parse_mode="HTML"
+    )
     await state.set_state(BroadcastStates.waiting_for_message)
 
 @router.message(BroadcastStates.waiting_for_message)
 async def process_broadcast_msg(message: Message, state: FSMContext):
     if message.text == "❌ Bekor qilish":
         await state.clear()
-        return await message.answer("Bekor qilindi", reply_markup=admin_main_menu_keyboard())
+        return await message.answer("❌ <b>Bekor qilindi</b>", reply_markup=admin_main_menu_keyboard(), parse_mode="HTML")
     
     from keyboards.admin_keyboards import broadcast_confirm_keyboard
     await state.update_data(msg_id=message.message_id, chat_id=message.chat.id)
-    await message.answer("Tasdiqlaysizmi? Xabar hamma foydalanuvchilarga boradi.", reply_markup=broadcast_confirm_keyboard())
+    await message.answer(
+        "❓ <b>Tasdiqlaysizmi?</b>\n\n"
+        "⚠️ Xabar <b>hamma foydalanuvchilarga</b> yuboriladi!",
+        reply_markup=broadcast_confirm_keyboard(),
+        parse_mode="HTML"
+    )
     await state.set_state(BroadcastStates.confirm_broadcast)
 
 @router.callback_query(F.data == "broadcast:confirm", BroadcastStates.confirm_broadcast)
 async def confirm_broadcast(callback: CallbackQuery, state: FSMContext, bot: Bot):
     data = await state.get_data()
-    await callback.message.edit_text("🚀 Xabar yuborish boshlandi...")
+    await callback.message.edit_text("🚀 <b>Xabar yuborilmoqda...</b>", parse_mode="HTML")
     
     from database.crud import get_all_users
     async with async_session_maker() as session:
@@ -587,43 +676,83 @@ async def confirm_broadcast(callback: CallbackQuery, state: FSMContext, bot: Bot
         except: pass
     
     await state.clear()
-    await callback.message.answer(f"✅ Xabar {count} ta foydalanuvchiga yuborildi.")
+    await callback.message.answer(
+        f"✅ <b>Xabar {count} ta foydalanuvchiga yuborildi!</b>",
+        reply_markup=admin_main_menu_keyboard(),
+        parse_mode="HTML"
+    )
 
 @router.callback_query(F.data == "broadcast:cancel", BroadcastStates.confirm_broadcast)
 async def cancel_broadcast(callback: CallbackQuery, state: FSMContext):
     await state.clear()
-    await callback.message.edit_text("❌ Bekor qilindi.")
+    await callback.message.edit_text("❌ <b>Bekor qilindi</b>", parse_mode="HTML")
 
 
-@router.message(F.text == "🔍 Parsing Dashboard")
-async def parsing_dashboard(message: Message):
-    """Show parsing dashboard with real stats"""
-    if not await check_admin(message.from_user.id): return
-    
-    msg = await message.answer("� Ma'lumotlar yuklanmoqda...")
-    
-    from database.crud import get_market_stats
-    async with async_session_maker() as session:
-        stats = await get_market_stats(session)
-    
-    text = f"""�🛸 **Parsing Dashboard**
+@router.message(F.text == "🖥️ Tizim Monitoringi")
+async def show_system_monitoring(message: Message):
+    """Show system health and monitoring stats"""
+    try:
+        from utils.currency import get_usd_rate
+        from database.database import async_session_maker
+        from sqlalchemy import select, func
+        from database.models import User, Car, ScrapedListing
+        import time
+        import os
+        from datetime import datetime, timedelta
 
-✅ Scraperlar holati: **Aktiv**
+        # Get currency rate
+        usd_rate = await get_usd_rate()
+        
+        async with async_session_maker() as session:
+            # DB Stats
+            user_count = await session.scalar(select(func.count(User.id)))
+            car_count = await session.scalar(select(func.count(Car.id)))
+            scraped_count = await session.scalar(
+                select(func.count(ScrapedListing.id))
+                .where(ScrapedListing.scraped_at > datetime.utcnow() - timedelta(hours=24))
+            )
+            
+            # Last scraped time
+            last_scraped = await session.scalar(
+                select(ScrapedListing.scraped_at)
+                .order_by(ScrapedListing.scraped_at.desc())
+                .limit(1)
+            )
+            last_scraped_str = last_scraped.strftime("%H:%M") if last_scraped else "Noma'lum"
 
-📊 **Statistika (So'nggi 7 kun):**
-🆕 Bugungi yangiliklar: **{stats['new_today']} ta**
-📦 Jami faol e'lonlar: **{stats['total_listings']} ta**
+        # System Load (approximate)
+        try:
+            load_avg = os.getloadavg()[0]  # 1 min load average
+        except:
+            load_avg = 0.0
 
-💰 **O'rtacha narxlar (Bozor):**
-• Gentra: **{stats['avg_prices'].get('Gentra', 0):,.0f} $**
-• Cobalt: **{stats['avg_prices'].get('Cobalt', 0):,.0f} $**
-• Spark: **{stats['avg_prices'].get('Spark', 0):,.0f} $**
-• Nexia 3: **{stats['avg_prices'].get('Nexia', 0):,.0f} $**
-• Malibu 2: **{stats['avg_prices'].get('Malibu', 0):,.0f} $**
-
-<i>Eslatma: Agar 'Bugungi yangiliklar' 0 bo'lsa, demak yangi e'lonlar chiqmagan yoki hammasi eski (dublikat).</i>
-"""
-    await msg.edit_text(text, parse_mode="HTML")
+        text = (
+            "🖥️ <b>TIZIM MONITORINGI</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "💵 <b>Valyuta Kursi (CBU):</b>\n"
+            f"🇺🇸 1 USD = <b>{usd_rate:,.0f} UZS</b>\n"
+            "✅ Avtomatik yangilanadi\n\n"
+            
+            "🤖 <b>Scraper Holati:</b>\n"
+            f"📥 So'nggi 24 soatda: <b>{scraped_count} ta</b> e'lon\n"
+            f"⏱️ Oxirgi yangilanish: <b>{last_scraped_str}</b>\n\n"
+            
+            "🗄️ <b>Baza Statistikasi:</b>\n"
+            f"👥 Foydalanuvchilar: <b>{user_count} ta</b>\n"
+            f"🚗 Moshinalar: <b>{car_count} ta</b>\n\n"
+            
+            "⚙️ <b>Server Holati:</b>\n"
+            f"🔥 Yuklama (Load): <b>{load_avg:.2f}</b>\n"
+            f"🕒 Server vaqti: {datetime.now().strftime('%H:%M:%S')}"
+        )
+        
+        await message.answer(text, parse_mode="HTML")
+        
+    except Exception as e:
+        # Assuming 'logger' is defined elsewhere or will be added.
+        # If not, this will cause a NameError.
+        logger.error(f"Error showing system monitor: {e}")
+        await message.answer("⚠️ Tizim ma'lumotlarini olishda xatolik bo'ldi.", parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("stats:"))

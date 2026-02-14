@@ -1,175 +1,154 @@
 """
-User keyboards for the bot
+User keyboards — Foydalanuvchi uchun klaviaturalar
+Asosiy, filtr, katalog, obuna va boshqa tugmalar
 """
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import (
+    ReplyKeyboardMarkup, KeyboardButton,
+    InlineKeyboardMarkup, InlineKeyboardButton
+)
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 
 
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
-    """Main menu keyboard for Flipper User"""
-    builder = ReplyKeyboardBuilder()
-    
-    # Row 1: Core Actions
-    builder.row(
-        KeyboardButton(text="🔍 Qidiruv"),
-        KeyboardButton(text="➕ E'lon berish")
+    """Asosiy menyu — foydalanuvchi uchun"""
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="🛒 Moshina olish"), KeyboardButton(text="➕ E'lon berish")],
+            [KeyboardButton(text="🔍 Qidiruv"), KeyboardButton(text="🚗 Katalog")],
+            [KeyboardButton(text="📊 Narxni baholash"), KeyboardButton(text="📉 Arzon variantlar")],
+            [KeyboardButton(text="🔔 Obunalar"), KeyboardButton(text="❤️ Sevimlilar")],
+            [KeyboardButton(text="📋 Mening arizalarim"), KeyboardButton(text="📊 Statistika")],
+            [KeyboardButton(text="ℹ️ Yordam")],
+        ],
+        resize_keyboard=True,
+        input_field_placeholder="Quyidagi tugmalardan tanlang..."
     )
-    
-    # Row 2: Inventory & Market
-    builder.row(
-        KeyboardButton(text="📝 Mening e'lonlarim"),
-        KeyboardButton(text="📉 Arzon variantlar")
-    )
-    
-    # Row 3: Updates
-    builder.row(
-        KeyboardButton(text="🔔 Obunalar"),
-        KeyboardButton(text="❤️ Sevimlilar")
-    )
-    
-    # Row 4: Tools
-    builder.row(
-        KeyboardButton(text="📊 Statistika"),
-        KeyboardButton(text="ℹ️ Yordam")
-    )
-    
-    return builder.as_markup(resize_keyboard=True)
-
-
-def request_phone_keyboard() -> ReplyKeyboardMarkup:
-    """Request phone number keyboard"""
-    builder = ReplyKeyboardBuilder()
-    builder.row(KeyboardButton(text="📱 Telefon raqamni yuborish", request_contact=True))
-    builder.row(KeyboardButton(text="◀️ Orqaga"))
-    return builder.as_markup(resize_keyboard=True)
-
-
-def car_filters_keyboard(data: dict = None) -> InlineKeyboardMarkup:
-    """Car filters inline keyboard with active indicators"""
-    data = data or {}
-    builder = InlineKeyboardBuilder()
-    
-    brand_text = f"🏷 Brend {'✅' if data.get('filter_brand') else ''}"
-    model_text = f"🚙 Model {'✅' if data.get('filter_model') else ''}"
-    year_text = f"📅 Yil {'✅' if data.get('filter_year') else ''}"
-    price_text = f"💵 Narx {'✅' if data.get('filter_price') else ''}"
-    
-    builder.row(
-        InlineKeyboardButton(text=brand_text, callback_data="filter:brand"),
-        InlineKeyboardButton(text=model_text, callback_data="filter:model")
-    )
-    builder.row(
-        InlineKeyboardButton(text=year_text, callback_data="filter:year"),
-        InlineKeyboardButton(text=price_text, callback_data="filter:price")
-    )
-    builder.row(
-        InlineKeyboardButton(text="🔄 Tozalash", callback_data="filter:reset")
-    )
-    builder.row(
-        InlineKeyboardButton(text="✅ Qidirish", callback_data="filter:search")
-    )
-    return builder.as_markup()
-
-
-def car_detail_keyboard(car_id: int, has_phone: bool = False) -> InlineKeyboardMarkup:
-    """Car detail inline keyboard"""
-    builder = InlineKeyboardBuilder()
-    
-    if has_phone:
-        builder.row(
-            InlineKeyboardButton(text="📞 Bog'lanish", callback_data=f"car:contact:{car_id}")
-        )
-    else:
-        builder.row(
-            InlineKeyboardButton(text="📞 Bog'lanish (telefon kerak)", callback_data="need_phone")
-        )
-    
-    builder.row(
-        InlineKeyboardButton(text="❤️ Sevimlilar", callback_data=f"car:favorite:{car_id}"),
-        InlineKeyboardButton(text="⭐ Sharh yozish", callback_data=f"car:review:{car_id}")
-    )
-    builder.row(
-        InlineKeyboardButton(text="📊 Sharhlar", callback_data=f"car:reviews:{car_id}"),
-        InlineKeyboardButton(text="🖼 Rasmlar", callback_data=f"car:gallery:{car_id}")
-    )
-    builder.row(
-        InlineKeyboardButton(text="📤 Ulashish", callback_data=f"car:share:{car_id}")
-    )
-    builder.row(
-        InlineKeyboardButton(text="◀️ Orqaga", callback_data="back:catalog")
-    )
-    
-    return builder.as_markup()
-
-
-def subscription_keyboard() -> InlineKeyboardMarkup:
-    """Subscription management keyboard"""
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="➕ Yangi obuna", callback_data="subscription:new")
-    )
-    builder.row(
-        InlineKeyboardButton(text="📋 Mening obunalarim", callback_data="subscription:list")
-    )
-    builder.row(
-        InlineKeyboardButton(text="◀️ Bosh menyu", callback_data="main_menu")
-    )
-    return builder.as_markup()
-
-
-def subscription_item_keyboard(subscription_id: int) -> InlineKeyboardMarkup:
-    """Individual subscription keyboard"""
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="❌ O'chirish", callback_data=f"subscription:delete:{subscription_id}")
-    )
-    builder.row(
-        InlineKeyboardButton(text="◀️ Orqaga", callback_data="subscription:list")
-    )
-    return builder.as_markup()
-
-
-def confirm_keyboard(action: str) -> InlineKeyboardMarkup:
-    """Confirmation keyboard"""
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="✅ Ha", callback_data=f"confirm:{action}"),
-        InlineKeyboardButton(text="❌ Yo'q", callback_data=f"cancel:{action}")
-    )
-    return builder.as_markup()
-
-
-def pagination_keyboard(page: int, total_pages: int, prefix: str = "page") -> InlineKeyboardMarkup:
-    """Pagination keyboard"""
-    builder = InlineKeyboardBuilder()
-    
-    buttons = []
-    if page > 1:
-        buttons.append(InlineKeyboardButton(text="⬅️", callback_data=f"{prefix}:{page-1}"))
-    
-    buttons.append(InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="page:current"))
-    
-    if page < total_pages:
-        buttons.append(InlineKeyboardButton(text="➡️", callback_data=f"{prefix}:{page+1}"))
-    
-    builder.row(*buttons)
-    return builder.as_markup()
+    return keyboard
 
 
 def cancel_keyboard() -> ReplyKeyboardMarkup:
-    """Cancel keyboard"""
-    builder = ReplyKeyboardBuilder()
-    builder.row(KeyboardButton(text="❌ Bekor qilish"))
-    return builder.as_markup(resize_keyboard=True)
+    """Bekor qilish tugmasi"""
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="❌ Bekor qilish")]],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+
+
+def confirm_keyboard(action: str = "") -> InlineKeyboardMarkup:
+    """Tasdiqlash tugmalari"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"confirm:{action}"),
+            InlineKeyboardButton(text="❌ Bekor qilish", callback_data=f"cancel:{action}")
+        ]
+    ])
+
+
+def request_phone_keyboard() -> ReplyKeyboardMarkup:
+    """Telefon raqam so'rash"""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📱 Telefon raqamni yuborish", request_contact=True)],
+            [KeyboardButton(text="❌ Bekor qilish")]
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+
+
+def car_filters_keyboard(current_filters: dict = None) -> InlineKeyboardMarkup:
+    """Qidiruv filtrlari — tanlangan filtrlarni ko'rsatadi"""
+    if not current_filters:
+        current_filters = {}
+    
+    brand_label = f"🏷 Brend: {current_filters['filter_brand']}" if current_filters.get('filter_brand') else "🏷 Brend"
+    model_label = f"🚙 Model: {current_filters['filter_model']}" if current_filters.get('filter_model') else "🚙 Model"
+    year_label = f"📅 Yil: {current_filters['filter_year']}+" if current_filters.get('filter_year') else "📅 Yil"
+    price_label = f"💰 Narx: {current_filters['filter_price']:,.0f}$" if current_filters.get('filter_price') else "💰 Narx"
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text=brand_label, callback_data="filter:brand"),
+            InlineKeyboardButton(text=model_label, callback_data="filter:model"),
+        ],
+        [
+            InlineKeyboardButton(text=year_label, callback_data="filter:year"),
+            InlineKeyboardButton(text=price_label, callback_data="filter:price"),
+        ],
+        [
+            InlineKeyboardButton(text="✅ Qidirish", callback_data="filter:search"),
+        ],
+        [
+            InlineKeyboardButton(text="♻️ Tozalash", callback_data="filter:reset"),
+        ]
+    ])
+    return keyboard
+
+
+def car_detail_keyboard(car_id: int, has_phone: bool = False) -> InlineKeyboardMarkup:
+    """Moshina tafsilotlari tugmalari"""
+    keyboard = [
+        [
+            InlineKeyboardButton(text="📞 Bog'lanish", callback_data=f"car:contact:{car_id}"),
+            InlineKeyboardButton(text="❤️", callback_data=f"car:favorite:{car_id}"),
+        ],
+        [
+            InlineKeyboardButton(text="📸 Rasmlar", callback_data=f"car:gallery:{car_id}"),
+            InlineKeyboardButton(text="⭐ Sharhlar", callback_data=f"car:reviews:{car_id}"),
+        ],
+        [
+            InlineKeyboardButton(text="✍️ Sharh yozish", callback_data=f"car:review:{car_id}"),
+            InlineKeyboardButton(text="📤 Ulashish", callback_data=f"car:share:{car_id}"),
+        ],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def pagination_keyboard(current_page: int, total_pages: int, prefix: str = "page") -> InlineKeyboardMarkup:
+    """Sahifalash tugmalari"""
+    buttons = []
+    
+    if current_page > 1:
+        buttons.append(InlineKeyboardButton(text="◀️", callback_data=f"{prefix}:{current_page - 1}"))
+    
+    buttons.append(InlineKeyboardButton(text=f"{current_page}/{total_pages}", callback_data="noop"))
+    
+    if current_page < total_pages:
+        buttons.append(InlineKeyboardButton(text="▶️", callback_data=f"{prefix}:{current_page + 1}"))
+    
+    return InlineKeyboardMarkup(inline_keyboard=[buttons])
+
+
+def subscription_keyboard() -> InlineKeyboardMarkup:
+    """Obunalar menyusi"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Yangi obuna yaratish", callback_data="subscription:new")],
+        [InlineKeyboardButton(text="📋 Mening obunalarim", callback_data="subscription:list")],
+    ])
+
+
+def subscription_item_keyboard(sub_id: int) -> InlineKeyboardMarkup:
+    """Obunani boshqarish"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗑 O'chirish", callback_data=f"subscription:delete:{sub_id}")],
+    ])
 
 
 def scraped_listing_keyboard(url: str, source: str) -> InlineKeyboardMarkup:
-    """Keyboard for scraped listings"""
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text=f"🌐 {source.upper()} da ko'rish", url=url)
-    )
-    builder.row(
-        InlineKeyboardButton(text="◀️ Orqaga", callback_data="back:catalog")
-    )
-    return builder.as_markup()
+    """Topilgan e'lon tugmalari"""
+    buttons = [
+        [InlineKeyboardButton(text=f"🔗 {source.upper()} da ko'rish", url=url)],
+        [InlineKeyboardButton(text="📞 Admin bilan bog'lanish", callback_data="need_phone")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def buy_request_keyboard(request_id: int) -> InlineKeyboardMarkup:
+    """Olish arizasi tugmalari"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📋 Batafsil", callback_data=f"buyreq:detail:{request_id}"),
+            InlineKeyboardButton(text="❌ Bekor qilish", callback_data=f"buyreq:cancel:{request_id}")
+        ]
+    ])

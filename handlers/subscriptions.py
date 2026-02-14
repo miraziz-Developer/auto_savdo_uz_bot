@@ -1,14 +1,16 @@
 """
-Subscription handlers for car alerts
+Subscriptions — Obunalar tizimi
+Foydalanuvchi kerakli moshina parametrlarini kiritadi,
+yangi e'lon tushganda avtomatik xabar oladi
 """
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.fsm.context import FSMContext
 from loguru import logger
 
 from database.database import async_session_maker
 from database.crud import (
-    create_subscription, get_user_subscriptions, 
+    create_subscription, get_user_subscriptions,
     delete_subscription
 )
 from keyboards.user_keyboards import (
@@ -22,104 +24,184 @@ router = Router()
 
 @router.message(F.text.in_(["🔔 Obuna", "🔔 Obunalar"]))
 async def subscription_menu(message: Message):
-    """Subscription menu"""
-    text = """
- 🔔 **Moshina qidirish (Obuna)**
-
-Siz o'zingizga kerakli moshinaning parametrlarini kiritasiz.
-Tizimga shunday moshina tushishi bilan sizga darhol xabar beramiz! 
-
-Quyidagi tugmalardan birini tanlang:
-"""
-    await message.answer(text, reply_markup=subscription_keyboard())
+    """Obunalar bo'limi"""
+    text = (
+        "🔔 <b>OBUNALAR</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Sizga kerakli moshina parametrlarini kiriting —\n"
+        "tizimga shunday moshina tushishi bilan\n"
+        "<b>darhol xabar beramiz!</b> 📩\n\n"
+        "📌 <i>Bir nechta obuna yaratishingiz mumkin</i>"
+    )
+    await message.answer(text, reply_markup=subscription_keyboard(), parse_mode="HTML")
 
 
 @router.callback_query(F.data == "subscription:new")
 async def new_subscription(callback: CallbackQuery, state: FSMContext):
-    """Start creating new subscription"""
-    await callback.message.edit_text(
-        "🔔 **Yangi obuna yaratish**\n\n"
-        "Moshina brendini kiriting (masalan: Chevrolet)\n\n"
-        "Bekor qilish uchun /cancel yozing"
+    """Yangi obuna yaratish"""
+    popular_brands = [
+        "Chevrolet", "Hyundai", "Kia", "Toyota",
+        "Daewoo", "Nissan", "BMW", "Lada"
+    ]
+    builder = []
+    for i in range(0, len(popular_brands), 2):
+        row = [KeyboardButton(text=popular_brands[i])]
+        if i + 1 < len(popular_brands):
+            row.append(KeyboardButton(text=popular_brands[i+1]))
+        builder.append(row)
+    builder.append([KeyboardButton(text="❌ Bekor qilish")])
+    keyboard = ReplyKeyboardMarkup(keyboard=builder, resize_keyboard=True)
+    
+    await callback.message.answer(
+        "🔔 <b>YANGI OBUNA</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "🏷 <b>Moshina brendini tanlang yoki yozing:</b>",
+        reply_markup=keyboard,
+        parse_mode="HTML"
     )
     await state.set_state(SubscriptionStates.waiting_for_brand)
+    await callback.answer()
 
 
 @router.message(SubscriptionStates.waiting_for_brand)
 async def process_sub_brand(message: Message, state: FSMContext):
-    """Process subscription brand"""
-    await state.update_data(brand=message.text)
+    """Brend qabul qilish"""
+    if message.text == "❌ Bekor qilish":
+        await state.clear()
+        await message.answer("❌ Bekor qilindi", reply_markup=main_menu_keyboard())
+        return
+    
+    brand = message.text.strip()
+    await state.update_data(brand=brand)
+    
+    keyboard = ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="⏭ O'tkazib yuborish")],
+        [KeyboardButton(text="❌ Bekor qilish")]
+    ], resize_keyboard=True)
+    
     await message.answer(
-        "Model nomini kiriting (masalan: Gentra)\n\n"
-        "Yoki /skip yozib o'tkazib yuboring"
+        f"✅ Brend: <b>{brand}</b>\n\n"
+        "🚙 <b>Model nomini kiriting:</b>\n"
+        "<i>Masalan: Gentra, Malibu, Camry</i>\n\n"
+        "Yoki ⏭ tugmasini bosib o'tkazib yuboring\n"
+        "(barcha modellar ko'rsatiladi)",
+        reply_markup=keyboard,
+        parse_mode="HTML"
     )
     await state.set_state(SubscriptionStates.waiting_for_model)
 
 
 @router.message(SubscriptionStates.waiting_for_model)
 async def process_sub_model(message: Message, state: FSMContext):
-    """Process subscription model"""
-    if message.text != "/skip":
-        await state.update_data(model=message.text)
+    """Model qabul qilish"""
+    if message.text == "❌ Bekor qilish":
+        await state.clear()
+        await message.answer("❌ Bekor qilindi", reply_markup=main_menu_keyboard())
+        return
+    
+    if message.text != "⏭ O'tkazib yuborish":
+        await state.update_data(model=message.text.strip())
+    
+    keyboard = ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="2024"), KeyboardButton(text="2023"), KeyboardButton(text="2022")],
+        [KeyboardButton(text="2021"), KeyboardButton(text="2020"), KeyboardButton(text="2019")],
+        [KeyboardButton(text="2018"), KeyboardButton(text="2016"), KeyboardButton(text="2014")],
+        [KeyboardButton(text="⏭ O'tkazib yuborish")],
+        [KeyboardButton(text="❌ Bekor qilish")]
+    ], resize_keyboard=True)
     
     await message.answer(
-        "Minimal yilni kiriting (masalan: 2020)\n\n"
-        "Yoki /skip yozib o'tkazib yuboring"
+        "📅 <b>Minimal yilni tanlang:</b>\n\n"
+        "<i>Tanlangan yildan KEYINGI moshinalar ko'rsatiladi</i>",
+        reply_markup=keyboard,
+        parse_mode="HTML"
     )
     await state.set_state(SubscriptionStates.waiting_for_year_from)
 
 
 @router.message(SubscriptionStates.waiting_for_year_from)
 async def process_sub_year_from(message: Message, state: FSMContext):
-    """Process subscription year from"""
-    if message.text != "/skip":
+    """Yil qabul qilish"""
+    if message.text == "❌ Bekor qilish":
+        await state.clear()
+        await message.answer("❌ Bekor qilindi", reply_markup=main_menu_keyboard())
+        return
+    
+    if message.text != "⏭ O'tkazib yuborish":
         try:
-            year = int(message.text)
+            year = int(message.text.strip())
             await state.update_data(year_from=year)
         except ValueError:
-            await message.answer("❌ Iltimos, to'g'ri yil kiriting")
+            await message.answer("❌ Iltimos, to'g'ri yil kiriting (masalan: 2020)")
             return
     
+    keyboard = ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="10,000 $"), KeyboardButton(text="15,000 $")],
+        [KeyboardButton(text="20,000 $"), KeyboardButton(text="30,000 $")],
+        [KeyboardButton(text="50,000 $"), KeyboardButton(text="100,000 $")],
+        [KeyboardButton(text="⏭ O'tkazib yuborish")],
+        [KeyboardButton(text="❌ Bekor qilish")]
+    ], resize_keyboard=True)
+    
     await message.answer(
-        "Maksimal narxni kiriting (masalan: 150000000)\n\n"
-        "Yoki /skip yozib o'tkazib yuboring"
+        "💰 <b>Maksimal narxni tanlang (dollarda):</b>\n\n"
+        "<i>Bu narxdan ARZON moshinalar ko'rsatiladi</i>\n\n"
+        "Yoki o'zingiz aniq summa yozing:",
+        reply_markup=keyboard,
+        parse_mode="HTML"
     )
     await state.set_state(SubscriptionStates.waiting_for_price_to)
 
 
 @router.message(SubscriptionStates.waiting_for_price_to)
 async def process_sub_price_to(message: Message, state: FSMContext):
-    """Process subscription price to"""
-    if message.text != "/skip":
+    """Narx qabul qilish"""
+    if message.text == "❌ Bekor qilish":
+        await state.clear()
+        await message.answer("❌ Bekor qilindi", reply_markup=main_menu_keyboard())
+        return
+    
+    if message.text != "⏭ O'tkazib yuborish":
         try:
-            price = float(message.text.replace(" ", "").replace(",", ""))
+            price_text = message.text.replace("$", "").replace(",", "").replace(" ", "").strip()
+            price = float(price_text)
             await state.update_data(price_to=price)
         except ValueError:
-            await message.answer("❌ Iltimos, to'g'ri narx kiriting")
+            await message.answer(
+                "❌ Narxni to'g'ri kiriting.\n"
+                "<i>Masalan: 15000</i>",
+                parse_mode="HTML"
+            )
             return
     
-    # Show confirmation
+    # Confirmation
     data = await state.get_data()
     
-    confirm_text = "✅ **Obuna tasdigi**\n\n"
+    text = "📋 <b>OBUNA TASDIQLASH</b>\n"
+    text += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    
     if data.get('brand'):
-        confirm_text += f"🏷 Brend: {data['brand']}\n"
+        text += f"🏷 Brend: <b>{data['brand']}</b>\n"
     if data.get('model'):
-        confirm_text += f"🚙 Model: {data['model']}\n"
+        text += f"🚙 Model: <b>{data['model']}</b>\n"
     if data.get('year_from'):
-        confirm_text += f"📅 Minimal yil: {data['year_from']}\n"
+        text += f"📅 Yil: <b>{data['year_from']}+</b>\n"
     if data.get('price_to'):
-        confirm_text += f"💰 Maksimal narx: <b>{data['price_to']:,.0f} $</b>\n"
+        text += f"💰 Maks. narx: <b>{data['price_to']:,.0f} $</b>\n"
     
-    confirm_text += "\n\nTasdiqlaysizmi?"
+    text += "\n✅ Shu parametrlar bo'yicha obuna yaratilasinmi?"
     
-    await message.answer(confirm_text, reply_markup=confirm_keyboard("subscription"))
+    await message.answer(
+        text,
+        reply_markup=confirm_keyboard("subscription"),
+        parse_mode="HTML"
+    )
     await state.set_state(SubscriptionStates.confirm_subscription)
 
 
 @router.callback_query(F.data == "confirm:subscription", SubscriptionStates.confirm_subscription)
 async def confirm_subscription(callback: CallbackQuery, state: FSMContext):
-    """Confirm and save subscription"""
+    """Obunani tasdiqlash va saqlash"""
     data = await state.get_data()
     
     async with async_session_maker() as session:
@@ -133,76 +215,108 @@ async def confirm_subscription(callback: CallbackQuery, state: FSMContext):
         )
     
     await state.clear()
-    await callback.message.edit_text(
-        "✅ Obuna muvaffaqiyatli yaratildi!\n\n"
-        "Sizning kriteriyalaringizga mos moshina paydo bo'lganda "
-        "darhol xabar beramiz! 🔔"
+    
+    text = (
+        "✅ <b>Obuna muvaffaqiyatli yaratildi!</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
     )
-    await callback.message.answer(
-        "Bosh menyuga qaytish:",
-        reply_markup=main_menu_keyboard()
+    if data.get('brand'):
+        text += f"🏷 {data['brand']}"
+    if data.get('model'):
+        text += f" {data['model']}"
+    if data.get('year_from'):
+        text += f" ({data['year_from']}+)"
+    if data.get('price_to'):
+        text += f" — {data['price_to']:,.0f}$ gacha"
+    
+    text += (
+        "\n\n📩 Shu parametrlarga mos yangi e'lon chiqqanda\n"
+        "sizga <b>darhol xabar yuboriladi</b>.\n\n"
+        "🔔 Obunalaringizni boshqarish uchun\n"
+        "<b>🔔 Obunalar</b> bo'limiga o'ting."
     )
+    
+    await callback.message.edit_text(text, parse_mode="HTML")
+    await callback.message.answer("🏠 Bosh menyu:", reply_markup=main_menu_keyboard())
 
 
 @router.callback_query(F.data == "cancel:subscription")
 async def cancel_subscription_creation(callback: CallbackQuery, state: FSMContext):
-    """Cancel subscription creation"""
+    """Obuna yaratishni bekor qilish"""
     await state.clear()
-    await callback.message.edit_text("❌ Obuna yaratish bekor qilindi")
-    await callback.message.answer(
-        "Bosh menyu:",
-        reply_markup=main_menu_keyboard()
+    await callback.message.edit_text(
+        "❌ <b>Obuna yaratish bekor qilindi</b>",
+        parse_mode="HTML"
     )
+    await callback.message.answer("🏠 Bosh menyu:", reply_markup=main_menu_keyboard())
 
 
 @router.message(F.text == "📊 Mening obunalarim")
 @router.callback_query(F.data == "subscription:list")
 async def list_subscriptions(event, state: FSMContext):
-    """List user subscriptions"""
-    # Handle both Message and CallbackQuery
+    """Obunalar ro'yxati"""
     user_id = event.from_user.id
     
     async with async_session_maker() as session:
         subscriptions = await get_user_subscriptions(session, user_id)
     
     if not subscriptions:
-        text = "❌ Sizda hozircha obunalar yo'q.\n\nYangi obuna yaratish uchun 🔔 Obuna tugmasini bosing."
+        text = (
+            "🔔 <b>Sizda hozircha obunalar yo'q</b>\n\n"
+            "Yangi obuna yaratish uchun quyidagi tugmani bosing.\n"
+            "Sizga kerakli moshina parametrlarini kiritsangiz,\n"
+            "yangi e'lon chiqqanda darhol xabar beramiz!"
+        )
         
         if isinstance(event, CallbackQuery):
-            await event.message.edit_text(text, reply_markup=subscription_keyboard())
+            await event.message.edit_text(text, reply_markup=subscription_keyboard(), parse_mode="HTML")
         else:
-            await event.answer(text, reply_markup=subscription_keyboard())
+            await event.answer(text, reply_markup=subscription_keyboard(), parse_mode="HTML")
         return
     
-    text = "📋 **Sizning obunalaringiz:**\n\n"
+    text = f"🔔 <b>MENING OBUNALARIM</b> ({len(subscriptions)} ta)\n"
+    text += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
     
     for i, sub in enumerate(subscriptions, 1):
         text += f"{i}. "
         if sub.brand:
-            text += f"{sub.brand} "
+            text += f"🏷 <b>{sub.brand}</b> "
         if sub.model:
             text += f"{sub.model} "
         if sub.year_from:
             text += f"({sub.year_from}+) "
         if sub.price_to:
-            text += f"- <b>{sub.price_to:,.0f} $</b> gacha"
-        text += f"\n   ID: {sub.id}\n\n"
+            text += f"— <b>{sub.price_to:,.0f} $</b> gacha"
+        text += "\n"
+    
+    text += "\nO'chirish uchun quyidagi tugmalarni bosing 👇"
+    
+    # Build delete buttons
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    buttons = []
+    for sub in subscriptions:
+        label = sub.brand or ""
+        if sub.model:
+            label += f" {sub.model}"
+        buttons.append([
+            InlineKeyboardButton(
+                text=f"🗑 {label.strip()}",
+                callback_data=f"subscription:delete:{sub.id}"
+            )
+        ])
+    buttons.append([InlineKeyboardButton(text="➕ Yangi obuna", callback_data="subscription:new")])
+    buttons.append([InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="main_menu")])
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     
     if isinstance(event, CallbackQuery):
-        await event.message.edit_text(text)
-        # Show delete options for first subscription
-        if subscriptions:
-            await event.message.answer(
-                "O'chirish uchun obuna ID sini yuboring:",
-                reply_markup=subscription_item_keyboard(subscriptions[0].id)
-            )
+        await event.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
     else:
-        await event.answer(text)
+        await event.answer(text, reply_markup=keyboard, parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("subscription:delete:"))
 async def delete_subscription_handler(callback: CallbackQuery):
-    """Delete subscription"""
+    """Obunani o'chirish"""
     subscription_id = int(callback.data.split(":")[2])
     
     async with async_session_maker() as session:

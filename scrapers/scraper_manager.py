@@ -182,16 +182,36 @@ class ScraperManager:
                         listing['cross_platform_url'] = similar.url
                         listing['cross_platform_source'] = similar.source
 
-                    # Deal Score Calculation
-                    score = 50
-                    if is_good_deal: score += 15
-                    if avg_price > 0 and listing.get('price', 0) < avg_price * 0.8: score += 15 # Super cheap
-                    if listing.get('mileage', 100000) < 20000: score += 10
+                    # Deal Score Calculation (Smart AI Logic)
+                    from utils.estimator import PriceEstimator
+                    deal_quality = PriceEstimator.analyze_deal(listing.get('price', 0), avg_price)
                     
+                    score = 50  # Baseline
+                    
+                    if deal_quality == 'super_cheap':
+                        score += 35  # Juda arzon!
+                        is_good_deal = True
+                        logger.info(f"💎 SUPER DEAL FOUND: {listing['title']} (-20% vs Market)")
+                    elif deal_quality == 'good_deal':
+                        score += 20
+                        is_good_deal = True
+                    elif deal_quality == 'expensive':
+                        score -= 25
+                    
+                    # Mileage Bonus
+                    if listing.get('mileage', 100000) < 20000: score += 10
+                    if listing.get('mileage', 100000) < 5000: score += 15  # Deyarli yangi
+                    
+                    # Keywords Analysis
                     desc_lower = (listing.get('description') or "").lower()
                     if 'srochno' in desc_lower: score += 10
                     if 'naqd' in desc_lower: score += 5
-                    if 'kraska bor' in desc_lower or 'dtp' in desc_lower or 'udar' in desc_lower: score -= 25
+                    if 'kelishamiz' in desc_lower: score += 5
+                    
+                    # Penalty for damage
+                    if 'kraska' in desc_lower or 'dtp' in desc_lower or 'udar' in desc_lower: 
+                        score -= 30
+                        is_good_deal = False  # Kraska bo'lsa "Good Deal" bo'lmaydi (xavfli)
                     
                     listing['deal_score'] = min(100, max(0, score))
 

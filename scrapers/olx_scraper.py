@@ -88,6 +88,9 @@ class OLXScraper(BaseScraper):
         Visit the detailed listing page and extract distinct attributes
         """
         try:
+            from utils.currency import get_usd_rate
+            current_rate = await get_usd_rate()
+            
             logger.info(f"Scraping details: {url}")
             await self.goto_with_retry(url)
             await self.page.wait_for_timeout(1000) # Wait for render
@@ -106,7 +109,7 @@ class OLXScraper(BaseScraper):
             # Price
             price_el = await self.page.query_selector('[data-testid="ad-price-container"] h3') 
             price_text = await price_el.inner_text() if price_el else "0"
-            price = self.parse_price(price_text)
+            price = self.parse_price(price_text, current_rate)
             
             # Location and Date (often in a specific span)
             location = "Toshkent" # Default
@@ -190,8 +193,8 @@ class OLXScraper(BaseScraper):
             return None
 
     @staticmethod
-    def parse_price(price_text: str) -> float:
-        """Parse price from text in USD"""
+    def parse_price(price_text: str, current_rate: float = 12900.0) -> float:
+        """Parse price from text in USD using dynamic rate"""
         try:
             # Remove all non-digit characters except decimal point
             # Detect currency
@@ -203,8 +206,8 @@ class OLXScraper(BaseScraper):
                 
             val = float(price_clean)
             
-            if is_uzs:
-                return round(val / 12850, 0) # Approx rate
+            if is_uzs and current_rate > 0:
+                return round(val / current_rate, 0)
             
             return val
         except:

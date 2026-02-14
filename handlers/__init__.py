@@ -1,3 +1,3 @@
 """
-Handlers package initialization
+Bot handlers package
 """
