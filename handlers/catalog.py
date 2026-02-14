@@ -429,8 +429,8 @@ async def show_scraped_deal(message: Message, deal):
         f"🚗 <b>{deal.brand} {deal.model}</b> ({deal.year})\n"
         f"💰 Narxi: <b>{deal.price:,.0f} $</b>\n\n"
         f"🛣 Probegi: <b>{deal.mileage or 0:,} km</b>\n"
-        f"⚙️ Uzatma: <b>{deal.transmission or 'noma\'lum'}</b>\n"
-        f"⛽ Yoqilg'i: <b>{deal.fuel_type or 'noma\'lum'}</b>\n"
+        f"⚙️ Uzatma: <b>{deal.transmission or 'Aniqlanmadi'}</b>\n"
+        f"⛽ Yoqilg'i: <b>{deal.fuel_type or 'Aniqlanmadi'}</b>\n"
     )
     
     if desc_short:
