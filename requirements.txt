@@ -14,3 +14,5 @@ aiohttp
 requests
 pydantic-settings
 apscheduler
+pandas
+matplotlib
