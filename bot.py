@@ -36,6 +36,12 @@ async def on_startup(bot: Bot):
     set_bot_instance(bot)
     
     # Initialize database
+    try:
+        # Hide password for security log
+        safe_url = settings.database_url.split('@')[-1] if '@' in settings.database_url else "UNKNOWN"
+        logger.info(f"Connecting to DB Host: {safe_url}")
+    except: pass
+
     await init_db()
     logger.info("Database initialized")
     
