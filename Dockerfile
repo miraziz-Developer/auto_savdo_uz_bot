@@ -1,5 +1,9 @@
 FROM python:3.9-slim
 
+# Loglarni darhol ko'rsatish (Buffer qilmaslik)
+ENV PYTHONUNBUFFERED=1
+
+
 # Tizim va Redis o'rnatish
 RUN apt-get update && apt-get install -y \
     redis-server \
