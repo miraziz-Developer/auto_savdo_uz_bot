@@ -1,13 +1,14 @@
 """
-Main bot application — Enhanced with all new handlers
+Main bot application — Optimized for Free Tier (No Redis, No Celery)
 """
 import asyncio
 import sys
 from loguru import logger
 from aiogram import Bot, Dispatcher
-from aiogram.fsm.storage.redis import RedisStorage
+from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from config import settings
 from database.database import init_db, close_db
@@ -16,8 +17,9 @@ from handlers import (
     reviews, crm, gallery, sell, analytics,
     buy, price_check, pipeline
 )
-from utils.notifications import set_bot_instance, notify_admin_about_error
-
+from utils.notifications import set_bot_instance
+from utils.followup import process_pending_followups
+from scrapers.scraper_manager import run_scraper_task
 
 # Configure logging
 logger.remove()
@@ -25,13 +27,6 @@ logger.add(
     sys.stderr,
     format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
     level="INFO"
-)
-logger.add(
-    "logs/bot_{time:YYYY-MM-DD}.log",
-    rotation="1 day",
-    retention="7 days",
-    format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
-    level="DEBUG"
 )
 
 
@@ -45,42 +40,29 @@ async def on_startup(bot: Bot):
     logger.info("Database initialized")
     
     # Warmup Cache & Currency
-    from utils.currency import get_usd_rate
-    rate = await get_usd_rate()
-    logger.info(f"Currency rates cached: 1 USD = {rate} UZS")
-    
-    # Run initial scraper check in background (Warmup)
-    from scrapers.scraper_manager import run_scraper_task
-    asyncio.create_task(run_scraper_task())
-    logger.info("Background scraper warmup started")
+    try:
+        from utils.currency import get_usd_rate
+        rate = await get_usd_rate()
+        logger.info(f"Currency rates cached: 1 USD = {rate} UZS")
+    except Exception as e:
+        logger.error(f"Error fetching currency: {e}")
     
     # Notify admins
     for admin_id in settings.admin_list:
         try:
             await bot.send_message(
                 admin_id,
-                "🟢 <b>BOT ISHGA TUSHDI! (UNLIMITED MODE)</b>\n"
-                "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                "📊 Barcha tizimlar tayyor:\n"
-                "   • 🤖 Bot — ✅\n"
-                "   • 🧠 AI Smart Price — ✅\n"
-                "   • 💵 Live Currency — ✅\n"
-                "   • 📥 Murojaatlar — ✅\n"
-                "   • 🛒 Olish arizalari — ✅\n"
-                "   • 📋 Pipeline — ✅\n"
-                "   • 🔥 Lead Scoring — ✅\n"
-                "   • 📞 Auto Follow-up — ✅\n"
-                "   • 📊 CRM Dashboard — ✅",
+                "🟢 <b>BOT ISHGA TUSHDI! (LITE MODE)</b>\n"
+                "━━━━━━━━━━━━━━━━━━━━━━\n"
+                "⚡ RAM Optimallashtirildi\n"
+                "🧹 Toza xotira rejimi\n"
+                "🤖 Scheduler fonida ishlaydi",
                 parse_mode="HTML"
             )
         except Exception as e:
             logger.error(f"Error notifying admin {admin_id}: {e}")
     
     logger.info(f"Admin IDs: {settings.admin_list}")
-    
-    # Start follow-up scheduler
-    asyncio.create_task(start_followup_scheduler(bot))
-    logger.info("Follow-up scheduler started")
 
 
 async def on_shutdown(bot: Bot):
@@ -100,19 +82,6 @@ async def on_shutdown(bot: Bot):
             pass
 
 
-async def start_followup_scheduler(bot: Bot):
-    """Run follow-up processing in background (fallback if Celery not available)"""
-    from utils.followup import process_pending_followups
-    
-    while True:
-        try:
-            await process_pending_followups(bot)
-        except Exception as e:
-            logger.error(f"Follow-up scheduler error: {e}")
-        
-        await asyncio.sleep(300)  # Every 5 minutes
-
-
 async def main():
     """Main function"""
     # Create bot
@@ -121,20 +90,16 @@ async def main():
         default=DefaultBotProperties(parse_mode=ParseMode.HTML)
     )
     
-    # Create dispatcher with Redis storage
-    try:
-        storage = RedisStorage.from_url(settings.redis_url)
-        dp = Dispatcher(storage=storage)
-        logger.info("Using Redis storage for FSM")
-    except Exception as e:
-        logger.warning(f"Redis not available, using memory storage: {e}")
-        dp = Dispatcher()
+    # Create dispatcher with Memory Storage (RAM efficient)
+    storage = MemoryStorage()
+    dp = Dispatcher(storage=storage)
+    logger.info("Using MemoryStorage for FSM (Lite Mode)")
     
     # Register startup/shutdown
     dp.startup.register(on_startup)
     dp.shutdown.register(on_shutdown)
     
-    # Register all routers (ORDER MATTERS!)
+    # Register all routers
     dp.include_router(common.router)       # /start, /help
     dp.include_router(buy.router)          # 🛒 Moshina olish
     dp.include_router(price_check.router)  # 📊 Narxni baholash
@@ -150,9 +115,22 @@ async def main():
     dp.include_router(analytics.router)    # 📊 Statistika
     
     logger.info("All routers registered!")
-    logger.info(f"Registered handlers: common, buy, price_check, pipeline, admin, crm, sell, catalog, subscriptions, favorites, reviews, gallery, analytics")
+
+    # --- BACKGROUND SCHEDULER (Lite Version) ---
+    scheduler = AsyncIOScheduler()
     
-    logger.info(f"Registered handlers: common, buy, price_check, pipeline, admin, crm, sell, catalog, subscriptions, favorites, reviews, gallery, analytics")
+    # 1. Scraper (Har 4 soatda)
+    scheduler.add_job(run_scraper_task, 'interval', hours=4)
+    logger.info("Job added: Scraper (every 4h)")
+    
+    # 2. Follow-ups (Har 5 daqiqada)
+    async def periodic_followups():
+        await process_pending_followups(bot)
+    scheduler.add_job(periodic_followups, 'interval', minutes=5)
+    logger.info("Job added: Follow-ups (every 5m)")
+    
+    # Start Scheduler
+    scheduler.start()
     
     # Start polling
     try:

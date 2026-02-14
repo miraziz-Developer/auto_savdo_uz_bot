@@ -13,3 +13,4 @@ python-dotenv
 aiohttp
 requests
 pydantic-settings
+apscheduler
