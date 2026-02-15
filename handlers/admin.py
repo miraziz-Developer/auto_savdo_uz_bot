@@ -437,6 +437,7 @@ async def process_conversion_desc(message: Message, state: FSMContext):
     
     # Confirm
     data = await state.get_data()
+    color_val = data['color'] or "Noma'lum"
     
     text = (
         "✅ <b>YANGI ARIZA -> KATALOG</b>\n"
@@ -444,7 +445,7 @@ async def process_conversion_desc(message: Message, state: FSMContext):
         f"🚗 Moshina: <b>{data['inquiry_brand']} {data['inquiry_model']}</b> ({data['inquiry_year']})\n"
         f"💰 Narx: <b>{data['price']:,.0f} $</b>\n"
         f"🛣 Probeg: {data['mileage']:,} km\n"
-        f"🎨 Rang: {data['color'] or \"Noma'lum\"}\n\n"
+        f"🎨 Rang: {color_val}\n\n"
         f"📝 Tavsif: <i>{desc}</i>\n\n"
         "Tasdiqlaysizmi?"
     )
