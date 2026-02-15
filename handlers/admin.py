@@ -508,6 +508,93 @@ async def show_admin_car_details(message: Message, car_id: int):
             text = f"⚙️ <b>Boshqarish:</b> {car.brand} {car.model} (ID: {car.id})"
             await message.answer(text, reply_markup=car_management_keyboard(car.id), parse_mode="HTML")
 
+@router.callback_query(F.data.startswith("admin:car:photo:"))
+async def admin_add_photo(callback: CallbackQuery, state: FSMContext):
+    """Add photos to existing car"""
+    car_id = int(callback.data.split(":")[3])
+    await state.update_data(edit_car_id=car_id, photos_list=[])
+    await state.set_state(AddCarStates.waiting_for_images)
+    await callback.message.answer(
+        f"📸 <b>Moshina #{car_id} uchun rasm qo'shing</b>\n\n"
+        "Rasmlarni yuboring, keyin ✅ Tayyor! bosing.",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="✅ Tayyor!")]],
+            resize_keyboard=True
+        ),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("admin:car:edit:"))
+async def admin_edit_car(callback: CallbackQuery):
+    """Edit car details"""
+    car_id = int(callback.data.split(":")[3])
+    async with async_session_maker() as session:
+        car = await get_car_by_id(session, car_id)
+        if not car:
+            await callback.answer("❌ Moshina topilmadi", show_alert=True)
+            return
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="💰 Narxni o'zgartirish", callback_data=f"edit:price:{car_id}"),
+            InlineKeyboardButton(text="📝 Tavsifni o'zgartirish", callback_data=f"edit:desc:{car_id}"),
+        ],
+        [
+            InlineKeyboardButton(text="🎨 Rangni o'zgartirish", callback_data=f"edit:color:{car_id}"),
+            InlineKeyboardButton(text="🛣 Probegni o'zgartirish", callback_data=f"edit:mileage:{car_id}"),
+        ],
+        [InlineKeyboardButton(text="🔙 Ortga", callback_data="admin:cars:list")],
+    ])
+    
+    await callback.message.edit_text(
+        f"✏️ <b>{car.brand} {car.model} ({car.year}) ni tahrirlash</b>\n\n"
+        f"💰 Narx: {car.price:,.0f} $\n"
+        f"🛣 Probeg: {car.mileage or 0:,} km\n"
+        f"🎨 Rang: {car.color or 'N/A'}\n\n"
+        f"Qaysi maydonni o'zgartirmoqchisiz?",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data.startswith("edit:price:"))
+async def edit_car_price(callback: CallbackQuery, state: FSMContext):
+    car_id = int(callback.data.split(":")[2])
+    await state.update_data(edit_car_id=car_id, edit_field="price")
+    await state.set_state(AddCarStates.waiting_for_price)
+    await callback.message.answer("💰 <b>Yangi narxni kiriting (USD):</b>", parse_mode="HTML")
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("edit:desc:"))
+async def edit_car_desc(callback: CallbackQuery, state: FSMContext):
+    car_id = int(callback.data.split(":")[2])
+    await state.update_data(edit_car_id=car_id, edit_field="description")
+    await state.set_state(AddCarStates.waiting_for_description)
+    await callback.message.answer("📝 <b>Yangi tavsifni yozing:</b>", parse_mode="HTML")
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("edit:color:"))
+async def edit_car_color(callback: CallbackQuery, state: FSMContext):
+    car_id = int(callback.data.split(":")[2])
+    await state.update_data(edit_car_id=car_id, edit_field="color")
+    await state.set_state(AddCarStates.waiting_for_color)
+    await callback.message.answer("🎨 <b>Yangi rangni yozing:</b>", parse_mode="HTML")
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("edit:mileage:"))
+async def edit_car_mileage(callback: CallbackQuery, state: FSMContext):
+    car_id = int(callback.data.split(":")[2])
+    await state.update_data(edit_car_id=car_id, edit_field="mileage")
+    await state.set_state(AddCarStates.waiting_for_mileage)
+    await callback.message.answer("🛣 <b>Yangi probegni kiriting (km):</b>", parse_mode="HTML")
+    await callback.answer()
+
+
 @router.callback_query(F.data.startswith("admin:car:delete:"))
 async def admin_delete_car(callback: CallbackQuery):
     car_id = int(callback.data.split(":")[3])

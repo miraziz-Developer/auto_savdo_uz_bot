@@ -43,8 +43,8 @@ def car_management_keyboard(car_id: int = None) -> InlineKeyboardMarkup:
 def publish_keyboard(car_id: int) -> InlineKeyboardMarkup:
     """E'lon chop etish tugmalari"""
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📢 Kanalga yuborish", callback_data=f"admin:publish_channel:{car_id}")],
-        [InlineKeyboardButton(text="🔙 Ortga", callback_data=f"admin:car_back:{car_id}")],
+        [InlineKeyboardButton(text="📢 Kanalga yuborish", callback_data=f"publish:telegram:{car_id}")],
+        [InlineKeyboardButton(text="🔙 Ortga", callback_data="admin:cars:list")],
     ])
 
 

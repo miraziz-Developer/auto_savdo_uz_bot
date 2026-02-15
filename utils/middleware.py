@@ -48,9 +48,14 @@ class BlockCheckMiddleware(BaseMiddleware):
             # Update cache
             self.cache[user.id] = (is_blocked, current_time)
             
-            # Simple cleanup of old cache entries (probabilistic or fixed size could be better but this is simple)
-            if len(self.cache) > 10000:
-                self.cache.clear()
+            # Evict expired cache entries (avoid full flush)
+            if len(self.cache) > 5000:
+                expired_keys = [
+                    uid for uid, (_, ts) in self.cache.items()
+                    if current_time - ts >= self.ttl
+                ]
+                for uid in expired_keys:
+                    del self.cache[uid]
 
             if is_blocked:
                 if isinstance(event, Message):

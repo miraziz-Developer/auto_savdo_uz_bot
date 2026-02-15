@@ -129,7 +129,8 @@ def validate_year(year: int) -> bool:
     Returns:
         True if valid
     """
-    return 1990 <= year <= 2026
+    from datetime import datetime
+    return 1990 <= year <= datetime.now().year + 1
 
 
 def format_mileage(km: int) -> str:
