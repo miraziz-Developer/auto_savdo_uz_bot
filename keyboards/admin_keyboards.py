@@ -29,12 +29,12 @@ def car_management_keyboard(car_id: int = None) -> InlineKeyboardMarkup:
     """Moshina boshqarish tugmalari"""
     buttons = [
         [
-            InlineKeyboardButton(text="📸 Rasm qo'shish", callback_data=f"admin:car_photo:{car_id}"),
-            InlineKeyboardButton(text="✏️ Tahrirlash", callback_data=f"admin:car_edit:{car_id}")
+            InlineKeyboardButton(text="📸 Rasm qo'shish", callback_data=f"admin:car:photo:{car_id}"),
+            InlineKeyboardButton(text="✏️ Tahrirlash", callback_data=f"admin:car:edit:{car_id}")
         ],
         [
-            InlineKeyboardButton(text="📢 Kanalga yuborish", callback_data=f"admin:car_publish:{car_id}"),
-            InlineKeyboardButton(text="🗑 O'chirish", callback_data=f"admin:car_delete:{car_id}")
+            InlineKeyboardButton(text="📢 Kanalga yuborish", callback_data=f"admin:car:publish:{car_id}"),
+            InlineKeyboardButton(text="🗑 O'chirish", callback_data=f"admin:car:delete:{car_id}")
         ],
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)

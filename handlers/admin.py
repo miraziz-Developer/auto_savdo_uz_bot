@@ -346,7 +346,7 @@ async def start_inquiry_conversion(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminConvertStates.waiting_for_price)
 async def process_conversion_price(message: Message, state: FSMContext):
-    """Process price and ask for mileage"""
+    """Process price and skip directly to description (auto-extract others)"""
     try:
         price = float(message.text.replace(' ', '').replace(',', '').replace('$', ''))
     except ValueError:
@@ -355,7 +355,7 @@ async def process_conversion_price(message: Message, state: FSMContext):
         
     await state.update_data(price=price)
     
-    # Get inquiry details for suggestions
+    # Get inquiry details
     data = await state.get_data()
     inquiry_id = data.get('inquiry_id')
     
@@ -363,67 +363,41 @@ async def process_conversion_price(message: Message, state: FSMContext):
     async with async_session_maker() as session:
         inq = await get_inquiry_by_id(session, inquiry_id)
         if inq:
-            await state.update_data(inquiry_desc=inq.description, inquiry_brand=inq.brand, inquiry_model=inq.model, inquiry_year=inq.year, inquiry_images=inq.images)
+            desc = inq.description or ""
             
-            # Try regex for mileage
+            # Auto-Extract Mileage
             import re
-            match = re.search(r'Probeg:?\s*(\d[\d\s]*)(km)?', inq.description or "", re.IGNORECASE)
-            suggested = match.group(1).strip() if match else "Topilmadi"
+            m_match = re.search(r'Probeg:?\s*(\d[\d\s]*)(km)?', desc, re.IGNORECASE)
+            try:
+                mileage = int(m_match.group(1).replace(" ", "")) if m_match else 0
+            except:
+                mileage = 0
+
+            # Auto-Extract Color
+            c_match = re.search(r'Rang[ui]?:?\s*([^\n]+)', desc, re.IGNORECASE)
+            color = c_match.group(1).strip() if c_match else None
+            
+            await state.update_data(
+                inquiry_desc=desc, 
+                inquiry_brand=inq.brand, 
+                inquiry_model=inq.model, 
+                inquiry_year=inq.year, 
+                inquiry_images=inq.images,
+                mileage=mileage,
+                color=color
+            )
             
             await message.answer(
-                f"🛣 <b>Probegni kiriting (km):</b>\n\n"
-                f"📝 Arizada topildi: <i>{suggested}</i>\n\n"
-                "Faqat raqam yozing (masalan 80000) yoki /skip (0 deb olinadi).", 
+                "📝 <b>Tavsif (Description) ni tahrirlang:</b>\n\n"
+                "Hozirgi matnni nusxalab, kerakli joyini o'zgartirib yuboring.\n"
+                "Yoki yangi matn yozing.",
                 parse_mode="HTML"
             )
-            await state.set_state(AdminConvertStates.waiting_for_mileage)
+            await message.answer(f"<code>{desc}</code>", parse_mode="HTML")
+            await state.set_state(AdminConvertStates.waiting_for_description)
         else:
             await message.answer("❌ Xatolik: Inquiry topilmadi.")
             await state.clear()
-
-
-@router.message(AdminConvertStates.waiting_for_mileage)
-async def process_conversion_mileage(message: Message, state: FSMContext):
-    if message.text == "/skip":
-        mileage = 0
-    else:
-        try:
-            mileage = int(message.text.replace(' ', '').replace('km', ''))
-        except:
-            await message.answer("❌ Raqam kiriting")
-            return
-            
-    await state.update_data(mileage=mileage)
-    
-    # Color
-    data = await state.get_data()
-    import re
-    match = re.search(r'Rang[ui]?:?\s*([^\n]+)', data.get('inquiry_desc', ""), re.IGNORECASE)
-    suggested = match.group(1).strip() if match else "Topilmadi"
-    
-    await message.answer(
-        f"🎨 <b>Rangini kiriting:</b>\n\n"
-        f"📝 Arizada topildi: <i>{suggested}</i>\n\n"
-        "Yozing yoki /skip.",
-        parse_mode="HTML"
-    )
-    await state.set_state(AdminConvertStates.waiting_for_color)
-
-
-@router.message(AdminConvertStates.waiting_for_color)
-async def process_conversion_color(message: Message, state: FSMContext):
-    color = message.text if message.text != "/skip" else None
-    await state.update_data(color=color)
-    
-    await message.answer(
-        "📝 <b>Tavsif (Description) ni tahrirlang:</b>\n\n"
-        "Hozirgi matnni nusxalab, kerakli joyini o'zgartirib yuboring.\n"
-        "Yoki yangi matn yozing.",
-        parse_mode="HTML"
-    )
-    data = await state.get_data()
-    await message.answer(f"<code>{data.get('inquiry_desc', '')}</code>", parse_mode="HTML")
-    await state.set_state(AdminConvertStates.waiting_for_description)
 
 
 @router.message(AdminConvertStates.waiting_for_description)
