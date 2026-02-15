@@ -42,7 +42,6 @@ async def start_add_car_menu(message: Message):
         await message.answer("❌ Sizda ushbu buyruqqa ruxsat yo'q")
         return
     
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📝 Qo'lda kiritish", callback_data="add_car:manual")],
         [InlineKeyboardButton(text="📥 Sotuv arizalaridan tanlash", callback_data="add_car:from_inquiry")]
@@ -622,17 +621,21 @@ async def show_inquiries(message: Message):
         )
         return
     
-    text = "📥 <b>YANGI MUROJAATLAR</b>\n"
-    text += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    await message.answer(
+        "📥 <b>YANGI MUROJAATLAR</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━",
+        parse_mode="HTML"
+    )
     for inq in inquiries:
-        text = ""
-        text += f"🆔 Ariza: <b>#{inq.id}</b>\n"
-        text += f"👤 Mijoz ID: <code>{inq.user_id}</code>\n"
-        text += f"📝 Turi: <b>{inq.inquiry_type.upper()}</b>\n"
+        inq_text = f"🆔 Ariza: <b>#{inq.id}</b>\n"
+        inq_text += f"👤 Mijoz ID: <code>{inq.user_id}</code>\n"
+        inq_text += f"📝 Turi: <b>{inq.inquiry_type.upper()}</b>\n"
         if inq.brand:
-            text += f"🚗 Moshina: <b>{inq.brand} {inq.model}</b>\n"
+            inq_text += f"🚗 Moshina: <b>{inq.brand} {inq.model}</b>\n"
+        if inq.price:
+            inq_text += f"💰 Narx: <b>{inq.price:,.0f} $</b>\n"
         
-        await message.answer(text, reply_markup=inquiry_management_keyboard(inq.id), parse_mode="HTML")
+        await message.answer(inq_text, reply_markup=inquiry_management_keyboard(inq.id), parse_mode="HTML")
 
 
 
@@ -653,9 +656,6 @@ async def inquiry_actions(callback: CallbackQuery):
             await update_inquiry_status(session, inquiry_id, "rejected")
             await callback.answer("❌ Rad etildi")
             await callback.message.edit_text(callback.message.text + "\n\n👉 <b>HOLAT: RAD ETILDI</b>", parse_mode="HTML")
-            
-        elif action == "accept": # Placeholder for 'complete' in keyboard if we add it
-            pass 
 
         elif action == "call":
             await callback.answer("📞 Qo'ng'iroq (Placeholder)")
@@ -717,19 +717,30 @@ async def record_sale_model(message: Message, state: FSMContext):
 
 @router.message(RecordSaleStates.waiting_for_year)
 async def record_sale_year(message: Message, state: FSMContext):
-    await state.update_data(year=int(message.text))
+    try:
+        year = int(message.text)
+    except (ValueError, TypeError):
+        return await message.answer("❌ Yilni to'g'ri kiriting (masalan: 2022)")
+    await state.update_data(year=year)
     await message.answer("💰 <b>Tan narxini kiriting (USD):</b>\n<i>Qanchaga olgan edingiz?</i>", parse_mode="HTML")
     await state.set_state(RecordSaleStates.waiting_for_purchase_price)
 
 @router.message(RecordSaleStates.waiting_for_purchase_price)
 async def record_sale_purchase_price(message: Message, state: FSMContext):
-    await state.update_data(purchase_price=float(message.text))
+    try:
+        purchase_price = float(message.text.replace(' ', '').replace(',', ''))
+    except (ValueError, TypeError):
+        return await message.answer("❌ Narxni to'g'ri kiriting (faqat raqam)")
+    await state.update_data(purchase_price=purchase_price)
     await message.answer("💵 <b>Sotuv narxini kiriting (USD):</b>\n<i>Qanchaga sotdingiz?</i>", parse_mode="HTML")
     await state.set_state(RecordSaleStates.waiting_for_selling_price)
 
 @router.message(RecordSaleStates.waiting_for_selling_price)
 async def record_sale_selling_price(message: Message, state: FSMContext, bot: Bot):
-    sell_price = float(message.text)
+    try:
+        sell_price = float(message.text.replace(' ', '').replace(',', ''))
+    except (ValueError, TypeError):
+        return await message.answer("❌ Narxni to'g'ri kiriting (faqat raqam)")
     data = await state.get_data()
     profit = sell_price - data['purchase_price']
     
@@ -817,8 +828,9 @@ async def confirm_broadcast(callback: CallbackQuery, state: FSMContext, bot: Bot
         try:
             await bot.copy_message(user.telegram_id, data['chat_id'], data['msg_id'])
             count += 1
-            await asyncio.sleep(0.05) # Rate limit
-        except: pass
+            await asyncio.sleep(0.1)  # Safe rate limit (Telegram max 30 msg/sec)
+        except Exception:
+            pass
     
     await state.clear()
     await callback.message.answer(

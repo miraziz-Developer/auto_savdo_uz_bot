@@ -30,7 +30,8 @@ async def cmd_start(message: Message, state: FSMContext):
             username=message.from_user.username,
             full_name=message.from_user.full_name
         )
-        user_is_admin = await is_admin(session, message.from_user.id)
+        # Fast path: check config first, then DB
+        user_is_admin = message.from_user.id in settings.admin_list or await is_admin(session, message.from_user.id)
     
     name = message.from_user.first_name or message.from_user.full_name
     hour = datetime.now().hour

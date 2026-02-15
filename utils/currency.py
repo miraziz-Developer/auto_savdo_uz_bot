@@ -27,7 +27,8 @@ async def get_usd_rate() -> float:
         return _CACHED_RATE
         
     try:
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(total=5)  # 5 sec max
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             # CBU API (Markaziy Bank)
             async with session.get('https://cbu.uz/oz/arkhiv-kursov-valyut/json/') as response:
                 if response.status == 200:
