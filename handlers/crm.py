@@ -13,10 +13,14 @@ from database.models import User, Inquiry, Car, Subscription, BuyRequest
 from database.crud import (
     get_admin_dashboard_stats, get_hot_leads, get_user_by_id,
     get_contact_history, create_contact_log, update_user_conversion,
-    get_user_inquiries, get_user_buy_requests, get_pending_buy_requests
+    get_user_inquiries, get_user_buy_requests, get_pending_buy_requests,
+    get_pending_inquiries, get_inquiry_by_id
 )
 from sqlalchemy import select, func, and_
-from keyboards.admin_keyboards import admin_main_menu_keyboard, user_profile_keyboard, buy_request_management_keyboard
+from keyboards.admin_keyboards import (
+    admin_main_menu_keyboard, user_profile_keyboard, 
+    buy_request_management_keyboard, inquiry_management_keyboard
+)
 from states.states import ContactLogStates, AdminNoteStates
 from utils.lead_scoring import get_lead_score_emoji, get_urgency_emoji, get_urgency_text
 
@@ -109,6 +113,101 @@ async def refresh_crm(callback: CallbackQuery):
     
     await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
     await callback.answer("✅ Yangilandi")
+
+
+# ====== SOTUV ARIZALARI (INQUIRIES) ======
+
+@router.callback_query(F.data == "crm:inquiries")
+async def show_crm_inquiries(callback: CallbackQuery):
+    """Show pending sell inquiries in CRM"""
+    async with async_session_maker() as session:
+        inquiries = await get_pending_inquiries(session)
+    
+    if not inquiries:
+        text = (
+            "📥 <b>SOTUV ARIZALARI</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Hozircha yangi arizalar yo'q."
+        )
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Dashboard", callback_data="crm:refresh")]
+        ])
+    else:
+        text = f"📥 <b>SOTUV ARIZALARI — {len(inquiries)} ta</b>\n"
+        text += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        
+        buttons = []
+        for inq in inquiries[:10]:
+            name = f"{inq.brand} {inq.model}" if inq.brand else "Moshina"
+            score_emoji = get_lead_score_emoji(inq.lead_score)
+            urgency_emoji = get_urgency_emoji(inq.urgency)
+            
+            text += (
+                f"{urgency_emoji} <b>#{inq.id}</b> | {score_emoji} Ball: {inq.lead_score}\n"
+                f"   🚗 {name} ({inq.year or '?'})\n"
+                f"   💰 {inq.price:,.0f} $\n"
+                f"   ⏰ {inq.created_at.strftime('%d.%m %H:%M')}\n\n"
+            )
+            
+            buttons.append([
+                InlineKeyboardButton(
+                    text=f"📋 #{inq.id} {name} ({inq.year})",
+                    callback_data=f"crm:inq:{inq.id}"
+                )
+            ])
+            
+        buttons.append([InlineKeyboardButton(text="◀️ Dashboard", callback_data="crm:refresh")])
+        keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+    
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("crm:inq:"))
+async def show_crm_inquiry_detail(callback: CallbackQuery):
+    """Show detailed inquiry view in CRM"""
+    inquiry_id = int(callback.data.split(":")[2])
+    
+    async with async_session_maker() as session:
+        inq = await get_inquiry_by_id(session, inquiry_id)
+        if not inq:
+            await callback.answer("❌ Ariza topilmadi", show_alert=True)
+            return
+            
+        user = await get_user_by_id(session, inq.user_id)
+    
+    text = f"📥 <b>ARIZA #{inq.id}</b>\n"
+    text += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    
+    if user:
+        name = user.full_name or user.username or f"ID: {user.telegram_id}"
+        text += f"👤 Mijoz: <b>{name}</b>\n"
+        if user.phone:
+            text += f"📞 Telefon: {user.phone}\n"
+    
+    text += f"\n🚗 Moshina: <b>{inq.brand} {inq.model}</b>\n"
+    text += f"📅 Yil: {inq.year}\n"
+    text += f"💰 Narx: <b>{inq.price:,.0f} $</b>\n"
+    if inq.mileage:
+        text += f"🛣 Probeg: {inq.mileage:,} km\n"
+    if inq.color:
+        text += f"🎨 Rang: {inq.color}\n"
+    
+    if inq.description:
+        text += f"\n📝 Tavsif: <i>{inq.description}</i>\n"
+        
+    text += f"\n📊 Lead Score: <b>{inq.lead_score}</b>\n"
+    text += f"⏰ {inq.created_at.strftime('%d.%m.%Y %H:%M')}"
+    
+    # Use existing management keyboard but customize back button logic if needed
+    keyboard = inquiry_management_keyboard(inquiry_id)
+    # Add back to CRM button
+    keyboard.inline_keyboard.append([
+        InlineKeyboardButton(text="◀️ Ortga (CRM)", callback_data="crm:inquiries")
+    ])
+    
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    await callback.answer()
 
 
 # ====== HOT LEADS ======

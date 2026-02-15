@@ -32,6 +32,9 @@ LIQUIDITY_MAP = {
     'k5': {'time': '10-20 kun', 'emoji': '⭐', 'level': 'Sekin'},
     'captiva': {'time': '10-20 kun', 'emoji': '⭐', 'level': 'Sekin'},
     'equinox': {'time': '10-20 kun', 'emoji': '⭐', 'level': 'Sekin'},
+    'song plus': {'time': '2-5 kun', 'emoji': '🔥🔥🔥', 'level': 'Juda tez'},
+    'chazor': {'time': '3-7 kun', 'emoji': '🔥🔥', 'level': 'Tez'},
+    'han': {'time': '10-25 kun', 'emoji': '⭐', 'level': 'Sekin'},
 }
 
 
@@ -40,9 +43,10 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 POPULAR_BRANDS_MAP = {
     "Chevrolet": ["Gentra", "Cobalt", "Nexia 3", "Spark", "Malibu", "Tracker", "Lacetti", "Damas", "Captiva", "Equinox"],
     "Hyundai": ["Accent", "Sonata", "Tucson", "Elantra", "Santa Fe"],
-    "Kia": ["K5", "Sportage", "Seltos", "Rio", "Cerato"],
-    "Toyota": ["Camry", "Corolla", "RAV4", "Land Cruiser"],
-    "Daewoo": ["Nexia", "Matiz", "Tico"],
+    "Kia": ["K5", "Sportage", "Seltos", "Rio", "Cerato", "Sorento", "Carnival"],
+    "Toyota": ["Camry", "Corolla", "RAV4", "Land Cruiser", "Prado"],
+    "BYD": ["Song Plus", "Chazor", "Han", "Tang"],
+    "Daewoo": ["Nexia", "Matiz", "Tico", "Damas"],
 }
 
 
@@ -114,10 +118,10 @@ async def process_model(message: Message, state: FSMContext):
     
     model = message.text.strip()
     await state.update_data(model=model)
-    
-    # Year
-    current_year = 2026
-    years = [str(y) for y in range(current_year, current_year - 12, -1)]
+    # Year - Dinamik
+    from datetime import datetime
+    current_year = datetime.now().year
+    years = [str(y) for y in range(current_year, current_year - 15, -1)]
     builder = []
     for i in range(0, len(years), 4):
         row = [KeyboardButton(text=y) for y in years[i:i+4]]
@@ -136,46 +140,16 @@ async def process_model(message: Message, state: FSMContext):
 
 @router.message(PriceCheckStates.waiting_for_year)
 async def process_year(message: Message, state: FSMContext):
-    """Process year and show price analysis"""
-    if message.text == "❌ Bekor qilish":
-        await state.clear()
-        await message.answer("❌ <b>Bekor qilindi</b>", reply_markup=main_menu_keyboard(), parse_mode="HTML")
-        return
-    
-    try:
-        year = int(message.text.strip())
-    except ValueError:
-        await message.answer("❌ To'g'ri yil kiriting")
-        return
-    
-    data = await state.get_data()
-    brand = data['brand']
-    model = data['model']
-    
-    await state.clear()
-    await message.answer(
-        "⏳ <b>Bozor ma'lumotlari tahlil qilinmoqda...</b>\n"
-        "<i>Bir soniya kuting</i>",
-        reply_markup=main_menu_keyboard(),
-        parse_mode="HTML"
-    )
-    
-    async with async_session_maker() as session:
-        # Get market data
-        avg_price = await get_average_market_price(session, brand, model, year)
-        price_range = await get_price_range(session, brand, model, year)
-        competitors = await get_active_competitors_count(session, brand, model, year, avg_price if avg_price else 0)
-    
-    # Liquidity
-    model_lower = model.lower()
-    liq = LIQUIDITY_MAP.get(model_lower, {'time': '7-14 kun', 'emoji': '⭐', 'level': 'O\'rtacha'})
+    # ... (existing code until AI fallback)
     
     # --- AI fallback ---
-    from utils.estimator import estimate_car_price
+    from utils.estimator import PriceEstimator
     
     if price_range['count'] == 0 and avg_price == 0:
         # Fallback to AI Estimation (Theoretical)
-        ai_price = estimate_car_price(brand, model, year, mileage=None, condition="good")
+        # PriceEstimator class method and correct args
+        ai_res = PriceEstimator.estimate_price(brand, model, year, mileage=0, condition="good")
+        ai_price = ai_res['recommended']
         avg_price = ai_price
         
         await message.answer(

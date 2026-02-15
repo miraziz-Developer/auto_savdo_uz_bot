@@ -257,6 +257,9 @@ async def publish_scraped_deal(listing_data: Dict):
     except Exception as e:
         logger.error(f"Publish scraped deal error: {e}")
 
+    # Notify matching users individually
+    await notify_matching_users_scraped(listing_data)
+
 
 async def publish_admin_car(car_data: Dict):
     """Admin qo'shgan moshinani kanalga chop etish"""
@@ -304,6 +307,123 @@ async def publish_admin_car(car_data: Dict):
         )
     except Exception as e:
         logger.error(f"Publish admin car error: {e}")
+
+        await bot.send_message(
+            chat_id=channel_id,
+            text=text,
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        logger.error(f"Publish admin car error: {e}")
+
+
+async def notify_matching_users(car_id: int):
+    """Notify users who subscribed to this car details"""
+    from database.database import async_session_maker
+    from database.crud import get_car_by_id, get_matching_users_for_car
+    
+    global bot
+    if not bot: return
+
+    try:
+        async with async_session_maker() as session:
+            car = await get_car_by_id(session, car_id)
+            if not car: return
+            
+            # Get matching users
+            user_ids = await get_matching_users_for_car(session, car)
+            
+            if not user_ids:
+                return
+
+            text = (
+                f"🎯 <b>SIZ QIDIRGAN MOSHINA!</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"🚘 <b>{car.brand} {car.model}</b> ({car.year})\n"
+                f"💰 Narxi: <b>{car.price:,.0f} $</b>\n"
+            )
+            if car.mileage:
+                text += f"🛣 Probeg: {car.mileage:,} km\n"
+            
+            text += f"\n👉 <i>Sizning obunangizga mos keldi!</i>"
+            
+            match_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="👁 Ko'rish", callback_data=f"view_car:{car.id}")],
+                [InlineKeyboardButton(text="📞 Aloqa", callback_data="need_phone")]
+            ])
+            
+            count = 0
+            for uid in user_ids:
+                try:
+                    await bot.send_message(chat_id=uid, text=text, reply_markup=match_keyboard, parse_mode="HTML")
+                    count += 1
+                except Exception:
+                    pass
+            
+            
+            logger.info(f"Notified {count} users about car #{car.id}")
+
+    except Exception as e:
+        logger.error(f"Notify matching users error: {e}")
+
+
+async def notify_matching_users_scraped(listing_data: Dict):
+    """Notify users about external scraped deal matching their criteria"""
+    from database.database import async_session_maker
+    from database.crud import find_interested_users
+    
+    global bot
+    if not bot: return
+
+    try:
+        brand = listing_data.get('brand')
+        model = listing_data.get('model')
+        price = listing_data.get('price', 0)
+        source = listing_data.get('source', 'Internet')
+        url = listing_data.get('url', '#')
+        
+        try:
+            year = int(str(listing_data.get('year', 0)).strip())
+        except:
+            year = 0
+
+        if not brand or not model:
+            return
+
+        async with async_session_maker() as session:
+            user_ids = await find_interested_users(session, brand, model, year, price)
+            
+            if not user_ids:
+                return
+
+            text = (
+                f"🌐 <b>INTERNETDA MOSHINA TOPILDI!</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"🚘 <b>{brand} {model}</b> ({year})\n"
+                f"💰 Narxi: <b>{price:,.0f} $</b>\n"
+                f"📡 Manba: <b>{source.upper()}</b>\n\n"
+                f"👉 <i>Sizning obunangizga mos keldi!</i>"
+            )
+            
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔗 E'lonni ko'rish", url=url)],
+                [InlineKeyboardButton(text="📞 Admin orqali olish", callback_data="need_phone")]
+            ])
+            
+            count = 0
+            for uid in user_ids:
+                try:
+                    await bot.send_message(chat_id=uid, text=text, reply_markup=keyboard, parse_mode="HTML")
+                    count += 1
+                except Exception:
+                    pass
+            
+            if count > 0:
+                logger.info(f"Notified {count} users about scraped deal: {brand} {model}")
+
+    except Exception as e:
+        logger.error(f"Notify scraped users error: {e}")
+
 
 
 async def notify_admin_about_error(error_message: str):

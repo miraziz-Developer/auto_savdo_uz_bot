@@ -272,7 +272,7 @@ async def show_car_confirmation(message: Message, state: FSMContext):
     await state.set_state(AddCarStates.confirm_car)
 
 
-from utils.notifications import publish_admin_car
+from utils.notifications import publish_admin_car, notify_matching_users
 
 @router.callback_query(F.data == "confirm:add_car", AddCarStates.confirm_car)
 async def confirm_add_car(callback: CallbackQuery, state: FSMContext):
@@ -303,6 +303,9 @@ async def confirm_add_car(callback: CallbackQuery, state: FSMContext):
             'images': data.get('images')
         }
         await publish_admin_car(car_dict)
+        
+        # Notify subscribers
+        await notify_matching_users(car.id)
     
     await state.clear()
     await callback.message.edit_text(
@@ -626,6 +629,7 @@ async def admin_publish_telegram(callback: CallbackQuery):
                 'images': car.images, 'transmission': car.transmission
             }
             await publish_admin_car(car_dict)
+            await notify_matching_users(car.id)
             await callback.answer("🚀 Kanalga yuborildi!")
         else:
             await callback.answer("Topilmadi")

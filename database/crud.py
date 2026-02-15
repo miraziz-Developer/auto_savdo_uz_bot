@@ -155,7 +155,49 @@ async def create_car(session: AsyncSession, **kwargs) -> Car:
     await session.commit()
     await session.refresh(car)
     logger.info(f"New car created: {car.brand} {car.model} ({car.year})")
-    return car
+
+async def find_interested_users(session: AsyncSession, brand: str, model: str, year: int, price: float) -> List[int]:
+    """Find users interested in these parameters (Subscriptions & Buy Requests)"""
+    from sqlalchemy import or_
+
+    if not brand or not model:
+        return []
+
+    # 1. Matching Subscriptions
+    sub_query = select(Subscription.user_id).where(
+        Subscription.is_active == True,
+        # Brand match
+        or_(Subscription.brand == None, Subscription.brand == "", func.lower(Subscription.brand) == brand.lower()),
+        # Model match
+        or_(Subscription.model == None, Subscription.model == "", func.lower(Subscription.model) == model.lower()),
+        # Year range
+        or_(Subscription.year_from == None, Subscription.year_from <= year),
+        or_(Subscription.year_to == None, Subscription.year_to >= year),
+        # Price range
+        or_(Subscription.price_from == None, Subscription.price_from <= price),
+        or_(Subscription.price_to == None, Subscription.price_to >= price)
+    )
+    
+    # 2. Matching Buy Requests
+    req_query = select(BuyRequest.user_id).where(
+        BuyRequest.status.in_(['pending', 'searching', 'found_options']),
+        or_(BuyRequest.brand == None, BuyRequest.brand == "", func.lower(BuyRequest.brand) == brand.lower()),
+        or_(BuyRequest.model == None, BuyRequest.model == "", func.lower(BuyRequest.model) == model.lower()),
+        or_(BuyRequest.year_from == None, BuyRequest.year_from <= year),
+        or_(BuyRequest.year_to == None, BuyRequest.year_to >= year),
+        or_(BuyRequest.budget_min == None, BuyRequest.budget_min * 0.9 <= price),
+        or_(BuyRequest.budget_max == None, BuyRequest.budget_max * 1.1 >= price)
+    )
+    
+    subs = await session.execute(sub_query)
+    reqs = await session.execute(req_query)
+    
+    return list(set(subs.scalars().all()) | set(reqs.scalars().all()))
+
+
+async def get_matching_users_for_car(session: AsyncSession, car: Car) -> List[int]:
+    """Wrapper for car object"""
+    return await find_interested_users(session, car.brand, car.model, car.year, car.price)
 
 
 async def get_cars(session: AsyncSession, 
