@@ -36,14 +36,32 @@ async def check_admin(user_id: int) -> bool:
 
 
 @router.message(F.text == "➕ Moshina qo'shish (ADMIN)")
-async def start_add_car(message: Message, state: FSMContext):
-    """Start adding new car"""
+async def start_add_car_menu(message: Message):
+    """Start adding new car - Menu"""
     if not await check_admin(message.from_user.id):
         await message.answer("❌ Sizda ushbu buyruqqa ruxsat yo'q")
         return
     
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📝 Qo'lda kiritish", callback_data="add_car:manual")],
+        [InlineKeyboardButton(text="📥 Sotuv arizalaridan tanlash", callback_data="add_car:from_inquiry")]
+    ])
+    
     await message.answer(
         "🚗 <b>YANGI MOSHINA QO'SHISH</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Qaysi usulda qo'shmoqchisiz?",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+@router.callback_query(F.data == "add_car:manual")
+async def start_add_car_manual(callback: CallbackQuery, state: FSMContext):
+    """Start manual add car flow"""
+    await callback.message.delete()
+    await callback.message.answer(
+        "🚗 <b>YANGI MOSHINA QO'SHISH (QO'LDA)</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n\n"
         "🏷 <b>Moshina brendini kiriting:</b>\n"
         "<i>Masalan: Chevrolet, Toyota, BMW</i>",
@@ -51,6 +69,33 @@ async def start_add_car(message: Message, state: FSMContext):
         parse_mode="HTML"
     )
     await state.set_state(AddCarStates.waiting_for_brand)
+    await callback.answer()
+
+@router.callback_query(F.data == "add_car:from_inquiry")
+async def select_inquiry_for_car(callback: CallbackQuery):
+    """Select inquiry to convert"""
+    async with async_session_maker() as session:
+        inquiries = await get_pending_inquiries(session)
+    
+    if not inquiries:
+        await callback.answer("❌ Arizalar topilmadi. Avval 'Murojaatlar' bo'limini tekshiring.", show_alert=True)
+        return
+        
+    kb = []
+    for inq in inquiries:
+        kb.append([InlineKeyboardButton(
+            text=f"{inq.brand} {inq.model} ({inq.year}) - {inq.price}$", 
+            callback_data=f"inquiry:convert:{inq.id}"
+        )])
+    # Add back button logic if needed, or simple close
+    kb.append([InlineKeyboardButton(text="❌ Yopish", callback_data="admin:cars:list")]) 
+    
+    await callback.message.edit_text(
+        "📥 <b>Qaysi arizani katalogga o'tkazamiz?</b>\n"
+        "Tanlang:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb),
+        parse_mode="HTML"
+    )
 
 
 @router.message(AddCarStates.waiting_for_brand)
