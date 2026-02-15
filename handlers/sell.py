@@ -24,6 +24,7 @@ async def start_car_sell(message: Message, state: FSMContext):
     """E'lon berish — 2 ta variant"""
     await state.set_state(CarSellStates.choosing_method)
     
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🏢 Bizga soting (Naqd / Trade-in)", callback_data="sell_avtosavdo")],
         [InlineKeyboardButton(text="📝 E'lon joylashtirish (Sotuv)", callback_data="sell_ad")]
     ])
@@ -81,6 +82,7 @@ async def process_pre_checkout_query(pre_checkout_query: PreCheckoutQuery, bot: 
 async def process_successful_payment(message: Message, state: FSMContext):
     """To'lov muvaffaqiyatli — ma'lumot yig'ishni boshlash"""
     await state.set_state(CarSellStates.waiting_brand)
+    await message.answer(
         "✅ <b>To'lov muvaffaqiyatli o'tdi!</b>\n\n"
         "Endi moshinangiz haqida ma'lumot kiriting.\n\n"
         "🏷 <b>Moshina brendini tanlang:</b>",
