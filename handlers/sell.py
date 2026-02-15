@@ -24,22 +24,23 @@ async def start_car_sell(message: Message, state: FSMContext):
     """E'lon berish — 2 ta variant"""
     await state.set_state(CarSellStates.choosing_method)
     
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🏢 Avto Savdo orqali (bepul)", callback_data="sell_avtosavdo")],
-        [InlineKeyboardButton(text="📝 Oddiy e'lon (10,000 so'm)", callback_data="sell_ad")]
+        [InlineKeyboardButton(text="🏢 Bizga soting (Naqd / Trade-in)", callback_data="sell_avtosavdo")],
+        [InlineKeyboardButton(text="📝 E'lon joylashtirish (Sotuv)", callback_data="sell_ad")]
     ])
     
     await message.answer(
         "🚗 <b>MOSHINANGIZNI SOTISH</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n\n"
         "Qaysi usulda sotishni xohlaysiz?\n\n"
-        "🏢 <b>Avto Savdo orqali</b>\n"
-        "Biz moshinangizni ko'rib chiqamiz, rasmini olamiz,\n"
-        "sifatli e'lon tayyorlaymiz va kanal orqali sotamiz.\n"
-        "Siz uchun <b>mutlaqo bepul!</b>\n\n"
-        "📝 <b>Oddiy e'lon</b>\n"
-        "O'zingiz ma'lumotlarni to'ldirasiz va botga joylaysiz.\n"
-        "Narxi atigi <b>10,000 so'm</b>.",
+        "🏢 <b>Bizga soting (Naqd pulga)</b>\n"
+        "Biz moshinangizni joyida baholaymiz va\n"
+        "<b>naqd pulga</b> sotib olamiz.\n"
+        "Shuningdek, eski moshinangizni yangisiga\n"
+        "almashtirishingiz mumkin (Trade-in).\n\n"
+        "📝 <b>E'lon joylashtirish</b>\n"
+        "O'zingiz ma'lumotlarni to'ldirasiz va\n"
+        "bizning kanal va botda e'lon qilasiz.\n"
+        "Xizmat haqi: <b>10,000 so'm</b>.",
         reply_markup=keyboard,
         parse_mode="HTML"
     )
@@ -80,13 +81,18 @@ async def process_pre_checkout_query(pre_checkout_query: PreCheckoutQuery, bot: 
 async def process_successful_payment(message: Message, state: FSMContext):
     """To'lov muvaffaqiyatli — ma'lumot yig'ishni boshlash"""
     await state.set_state(CarSellStates.waiting_brand)
-    await message.answer(
         "✅ <b>To'lov muvaffaqiyatli o'tdi!</b>\n\n"
         "Endi moshinangiz haqida ma'lumot kiriting.\n\n"
-        "🏷 <b>Moshina markasini yozing:</b>\n"
-        "<i>Masalan: Chevrolet, Hyundai, Toyota</i>",
+        "🏷 <b>Moshina brendini tanlang:</b>",
         parse_mode="HTML",
-        reply_markup=ReplyKeyboardRemove()
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[
+                [KeyboardButton(text="Chevrolet"), KeyboardButton(text="Hyundai")],
+                [KeyboardButton(text="Kia"), KeyboardButton(text="BYD")],
+                [KeyboardButton(text="Toyota"), KeyboardButton(text="Lada")],
+            ],
+            resize_keyboard=True
+        )
     )
 
 

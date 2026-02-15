@@ -131,16 +131,16 @@ async def process_model(message: Message, state: FSMContext):
     model = message.text.strip() if message.text != "Barcha modellar" else None
     await state.update_data(model=model)
     
-    # Years keyboard
-    current_year = 2026
-    years = list(range(current_year, current_year - 15, -1))
-    builder = []
-    for i in range(0, len(years), 3):
-        row = [KeyboardButton(text=str(y)) for y in years[i:i+3]]
-        builder.append(row)
-    builder.append([KeyboardButton(text="Farqi yo'q")])
-    builder.append([KeyboardButton(text="❌ Bekor qilish")])
-    keyboard = ReplyKeyboardMarkup(keyboard=builder, resize_keyboard=True)
+    # Years keyboard (Range buttons)
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="2024 - 2026"), KeyboardButton(text="2020 - 2023")],
+            [KeyboardButton(text="2016 - 2019"), KeyboardButton(text="2010 - 2015")],
+            [KeyboardButton(text="2000 - 2009"), KeyboardButton(text="Farqi yo'q")],
+            [KeyboardButton(text="❌ Bekor qilish")]
+        ],
+        resize_keyboard=True
+    )
     
     data = await state.get_data()
     await message.answer(
@@ -183,9 +183,9 @@ async def process_year(message: Message, state: FSMContext):
     
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="5 000 - 10 000 $"), KeyboardButton(text="10 000 - 15 000 $")],
-            [KeyboardButton(text="15 000 - 20 000 $"), KeyboardButton(text="20 000 - 30 000 $")],
-            [KeyboardButton(text="30 000 - 50 000 $"), KeyboardButton(text="50 000+ $")],
+            [KeyboardButton(text="5k - 8k $"), KeyboardButton(text="8k - 12k $")],
+            [KeyboardButton(text="12k - 15k $"), KeyboardButton(text="15k - 20k $")],
+            [KeyboardButton(text="20k - 30k $"), KeyboardButton(text="30k+ $")],
             [KeyboardButton(text="❌ Bekor qilish")]
         ],
         resize_keyboard=True
@@ -210,12 +210,12 @@ async def process_budget(message: Message, state: FSMContext):
         return
     
     budget_map = {
-        "5 000 - 10 000 $": (5000, 10000),
-        "10 000 - 15 000 $": (10000, 15000),
-        "15 000 - 20 000 $": (15000, 20000),
-        "20 000 - 30 000 $": (20000, 30000),
-        "30 000 - 50 000 $": (30000, 50000),
-        "50 000+ $": (50000, 200000),
+        "5k - 8k $": (5000, 8000),
+        "8k - 12k $": (8000, 12000),
+        "12k - 15k $": (12000, 15000),
+        "15k - 20k $": (15000, 20000),
+        "20k - 30k $": (20000, 30000),
+        "30k+ $": (30000, 100000),
     }
     
     if message.text in budget_map:

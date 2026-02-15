@@ -17,7 +17,7 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(text="🔍 Qidiruv"), KeyboardButton(text="🚗 Katalog")],
             [KeyboardButton(text="📊 Narxni baholash"), KeyboardButton(text="📉 Arzon variantlar")],
             [KeyboardButton(text="🔔 Obunalar"), KeyboardButton(text="❤️ Sevimlilar")],
-            [KeyboardButton(text="📋 Mening arizalarim"), KeyboardButton(text="📊 Statistika")],
+            [KeyboardButton(text="📋 Mening arizalarim")],
             [KeyboardButton(text="ℹ️ Yordam")],
         ],
         resize_keyboard=True,

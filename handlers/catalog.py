@@ -268,11 +268,12 @@ async def process_year(message: Message, state: FSMContext):
         )
     
     await state.update_data(filter_year=year)
+    data = await state.get_data()
     await state.set_state(None)
     await message.answer(
         f"✅ Minimal yil: <b>{year}</b>\n"
         "Boshqa filtrlarni tanlang yoki qidiruvni boshlang:",
-        reply_markup=car_filters_keyboard({'filter_year': year}),
+        reply_markup=car_filters_keyboard(data),
         parse_mode="HTML"
     )
 
@@ -290,11 +291,12 @@ async def process_price(message: Message, state: FSMContext):
     
     price = float(cleaned_price)
     await state.update_data(filter_price=price)
+    data = await state.get_data()
     await state.set_state(None)
     await message.answer(
         f"✅ Maksimal narx: <b>{price:,.0f} $</b>\n"
         "Boshqa filtrlarni tanlang yoki qidiruvni boshlang:",
-        reply_markup=car_filters_keyboard({'filter_price': price}),
+        reply_markup=car_filters_keyboard(data),
         parse_mode="HTML"
     )
 

@@ -170,15 +170,21 @@ async def process_year(message: Message, state: FSMContext):
     model_lower = model.lower()
     liq = LIQUIDITY_MAP.get(model_lower, {'time': '7-14 kun', 'emoji': '⭐', 'level': 'O\'rtacha'})
     
+    # --- AI fallback ---
+    from utils.estimator import estimate_car_price
+    
     if price_range['count'] == 0 and avg_price == 0:
+        # Fallback to AI Estimation (Theoretical)
+        ai_price = estimate_car_price(brand, model, year, mileage=None, condition="good")
+        avg_price = ai_price
+        
         await message.answer(
             f"📊 <b>{brand} {model} ({year})</b>\n"
             "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "❌ Bu moshina bo'yicha yetarli ma'lumot topilmadi.\n\n"
-            "Bozorda kam uchraydi yoki boshqa nom\n"
-            "bilan joylashtirilgan bo'lishi mumkin.\n\n"
-            "📞 Savdogarimiz bilan bog'laning:\n"
-            "@avtosavdo_admin",
+            "⚠️ <b>Bozorda aniq e'lonlar kam.</b>\n"
+            "🤖 Sun'iy intellekt (AI) hisob-kitobiga ko'ra:\n\n"
+            f"💰 <b>Taxminiy narx: {ai_price:,.0f} $</b>\n"
+            "<i>(Bu nazariy narx, moshina holatiga qarab o'zgaradi)</i>",
             parse_mode="HTML"
         )
         return

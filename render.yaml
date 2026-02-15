@@ -8,17 +8,16 @@ services:
     envVars:
       - key: BOT_TOKEN
         sync: false
+      - key: ADMIN_IDS
+        sync: false
       - key: DATABASE_URL
-        fromDatabase:
-          name: avtosavdo-db
-          property: connectionString
-      # Redis endi ichkarida (localhost)
+        sync: false
       - key: REDIS_URL
-        value: redis://localhost:6379/0
+        sync: false
       - key: CELERY_BROKER_URL
-        value: redis://localhost:6379/0
-      - key: CELERY_Result_BACKEND
-        value: redis://localhost:6379/0
+        sync: false
+      - key: CELERY_RESULT_BACKEND
+        sync: false
       - key: PORT
         value: 10000
 
