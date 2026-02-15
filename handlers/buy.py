@@ -464,6 +464,41 @@ async def confirm_buy_request(callback: CallbackQuery, state: FSMContext):
         # Find matching cars immediately
         matching_cars = await find_matching_cars_for_request(session, buy_request)
     
+    # --- ADMIN NOTIFICATION ---
+    user_link = f"@{callback.from_user.username}" if callback.from_user.username else callback.from_user.full_name
+    admin_text = (
+        f"🛒 <b>YANGI OLISH ARIZASI #{buy_request.id}</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"👤 Mijoz: <b>{user_link}</b> (ID: {user_id})\n"
+        f"📞 Telefon: <b>{data.get('phone', 'N/A')}</b>\n\n"
+        f"🚗 <b>{data.get('brand')} {data.get('model') or 'Barcha'}</b>\n"
+        f"📅 Yil: {data.get('year_from')} - {data.get('year_to')}\n"
+    )
+    if data.get('budget_min'):
+        admin_text += f"💰 Budjet: <b>{data['budget_min']:,.0f} - {data['budget_max']:,.0f} $</b>\n"
+    if data.get('transmission'):
+        admin_text += f"⚙️ Karobka: {data['transmission']}\n"
+    if data.get('additional_notes'):
+        admin_text += f"📝 Izoh: {data['additional_notes']}\n"
+        
+    # 1. Send to Admin Group
+    if settings.admin_group_id:
+        try:
+             await callback.message.bot.send_message(
+                 chat_id=settings.admin_group_id,
+                 text=admin_text,
+                 parse_mode="HTML"
+             )
+        except Exception as e:
+             logger.error(f"Error sending buy req to group: {e}")
+
+    # 2. Individual Admins
+    for admin_id in settings.admin_list:
+        try:
+            await callback.message.bot.send_message(chat_id=admin_id, text=admin_text, parse_mode="HTML")
+        except Exception:
+            pass
+
     await state.clear()
     
     # Respond to user

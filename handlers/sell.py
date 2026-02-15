@@ -468,17 +468,32 @@ async def process_phone(message: Message, state: FSMContext, bot: Bot):
     )
     
     photos = data.get('photos', [])
+    
+    # 1. Send to Admin Group
+    if settings.admin_group_id:
+        try:
+            if photos:
+                await bot.send_photo(
+                    chat_id=settings.admin_group_id, 
+                    photo=photos[0], 
+                    caption=admin_text, 
+                    parse_mode="HTML"
+                )
+            else:
+                await bot.send_message(
+                    chat_id=settings.admin_group_id, 
+                    text=admin_text, 
+                    parse_mode="HTML"
+                )
+        except Exception as e:
+            logger.error(f"Error sending to Admin Group setting: {e}")
+
+    # 2. Individual Admins
     for admin_id in settings.admin_list:
         try:
             if photos:
-                if len(photos) > 1:
-                    from aiogram.types import InputMediaPhoto
-                    media = [InputMediaPhoto(media=photos[0], caption=admin_text, parse_mode="HTML")]
-                    for ph in photos[1:10]:
-                        media.append(InputMediaPhoto(media=ph))
-                    await bot.send_media_group(chat_id=admin_id, media=media)
-                else:
-                    await bot.send_photo(chat_id=admin_id, photo=photos[0], caption=admin_text, parse_mode="HTML")
+                # Send first photo only for simplicity
+                await bot.send_photo(chat_id=admin_id, photo=photos[0], caption=admin_text, parse_mode="HTML")
             else:
                 await bot.send_message(chat_id=admin_id, text=admin_text, parse_mode="HTML")
         except Exception as e:
