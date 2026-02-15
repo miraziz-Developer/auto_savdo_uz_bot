@@ -74,5 +74,29 @@ Bu yerda siz butun tizimni boshqarasiz:
 ### 📞 Texnik Yordam
 Agar botda muammo bo'lsa, dasturchiga murojaat qiling.
 
-**Bot Version:** 2.0 (Unlimited AI)
+**Bot Version:** 3.0 (God Mode - AI & CRM)
 **Powered by:** Render & Python
+
+---
+
+## 🚀 Yangi Imkoniyatlar (v3.0 - God Mode)
+
+### 1. 🧠 AI Narx Baholash (Kuchaytirilgan)
+*   Endi bot nafaqat eski, balki eng yangi **BYD (Song Plus, Chazor, Han)** va **Kia/Hyundai** modellarini ham taniydi.
+*   Bozorda aniq e'lonlar bo'lmasa ham, bot **Sun'iy Intellekt (AI)** yordamida taxminiy narxni hisoblab beradi.
+*   Yil va valyuta kursi har doim **avtomatik yangilanadi**.
+
+### 2. 🔔 Aqlli Xabarlar (Smart Notifications)
+*   **Obuna bo'lganmisiz?** Endi bot sizga ikki tomondan xabar beradi:
+    1.  Bot ichiga admin yangi moshina qo'shsa — **darhol xabar keladi**.
+    2.  Internetdan (OLX/Avtoelon) siz qidirgan moshina chiqsa — **bot uni topib sizga yuboradi!**
+*   Hech qanday e'lonni o'tkazib yubormaysiz.
+
+### 3. 📊 To'liq CRM Tizimi (Adminlar uchun)
+*   **Sotuv Arizalari (Inquiries):** Kim moshina sotmoqchi ekanligini endi alohida menyuda ko'rish, saralash va ularga ball berish mumkin.
+*   **Hot Leads 🔥:** Bot mijozning xatti-harakatiga qarab (qancha ko'rdi, nima qidirdi), unga **Lead Score** beradi. Eng qiziqqan mijozlar ro'yxati alohida chiqadi.
+*   **Contact Log:** Admin har bir mijoz bilan aloqani (tel, sms) qayd qilib borishi mumkin.
+
+### 4. 🛠 Texnik Mukammallik
+*   Bot endi ancha **tezroq ishlaydi** va kamroq resurs sarflaydi.
+*   Har qanday xatolik yuz bersa, bot adminlarga darhol xabar beradi.
