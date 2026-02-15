@@ -1125,21 +1125,39 @@ async def get_market_stats(session: AsyncSession) -> dict:
     return stats
 
 
-async def convert_inquiry_to_car(session: AsyncSession, inquiry_id: int, new_price: float) -> Optional[Car]:
-    """Convert valid inquiry to car listing"""
+async def convert_inquiry_to_car(
+    session: AsyncSession, 
+    inquiry_id: int, 
+    price: float,
+    brand: str,
+    model: str,
+    year: int,
+    description: str,
+    images: list,
+    mileage: int = 0,
+    color: str = None
+) -> Optional[Car]:
+    """Convert valid inquiry to car listing with edited details"""
     stmt = select(Inquiry).where(Inquiry.id == inquiry_id)
     result = await session.execute(stmt)
     inquiry = result.scalar_one_or_none()
     
     if not inquiry: return None
     
+    # Ensure images format
+    final_images = images
+    if isinstance(images, list):
+         final_images = {'gallery': images}
+    
     new_car = Car(
-        brand=inquiry.brand or "Noma'lum",
-        model=inquiry.model or "Noma'lum",
-        year=inquiry.year or 0,
-        price=new_price,
-        description=inquiry.description,
-        images=inquiry.images,
+        brand=brand,
+        model=model,
+        year=year,
+        price=price,
+        description=description,
+        images=final_images,
+        mileage=mileage,
+        color=color,
         is_available=True,
         source="inquiry",
         external_id=f"inquiry_{inquiry.id}",

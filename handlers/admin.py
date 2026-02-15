@@ -346,34 +346,159 @@ async def start_inquiry_conversion(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminConvertStates.waiting_for_price)
 async def process_conversion_price(message: Message, state: FSMContext):
-    """Process price and convert"""
+    """Process price and ask for mileage"""
     try:
-        price = float(message.text.replace(' ', ''))
+        price = float(message.text.replace(' ', '').replace(',', '').replace('$', ''))
     except ValueError:
         await message.answer("❌ Iltimos, narxni to'g'ri kiriting (faqat raqam).")
         return
         
+    await state.update_data(price=price)
+    
+    # Get inquiry details for suggestions
     data = await state.get_data()
     inquiry_id = data.get('inquiry_id')
     
-    # Perform conversion
+    from database.crud import get_inquiry_by_id
     async with async_session_maker() as session:
-        new_car = await convert_inquiry_to_car(session, inquiry_id, price)
-        
-    if new_car:
-        await message.answer(
-            f"✅ <b>Mashina muvaffaqiyatli qo'shildi!</b>\n\n"
-            f"ID: <b>{new_car.id}</b>\n"
-            f"Marka: {new_car.brand} {new_car.model}\n"
-            f"Narx: {new_car.price} $\n\n"
-            "Endi 'Admin: Moshinalar' menyusidan uni tahrirlashingiz mumkin (Probeg, Rangi, va h.k).",
-            parse_mode="HTML",
-            reply_markup=admin_main_menu_keyboard()
-        )
+        inq = await get_inquiry_by_id(session, inquiry_id)
+        if inq:
+            await state.update_data(inquiry_desc=inq.description, inquiry_brand=inq.brand, inquiry_model=inq.model, inquiry_year=inq.year, inquiry_images=inq.images)
+            
+            # Try regex for mileage
+            import re
+            match = re.search(r'Probeg:?\s*(\d[\d\s]*)(km)?', inq.description or "", re.IGNORECASE)
+            suggested = match.group(1).strip() if match else "Topilmadi"
+            
+            await message.answer(
+                f"🛣 <b>Probegni kiriting (km):</b>\n\n"
+                f"📝 Arizada topildi: <i>{suggested}</i>\n\n"
+                "Faqat raqam yozing (masalan 80000) yoki /skip (0 deb olinadi).", 
+                parse_mode="HTML"
+            )
+            await state.set_state(AdminConvertStates.waiting_for_mileage)
+        else:
+            await message.answer("❌ Xatolik: Inquiry topilmadi.")
+            await state.clear()
+
+
+@router.message(AdminConvertStates.waiting_for_mileage)
+async def process_conversion_mileage(message: Message, state: FSMContext):
+    if message.text == "/skip":
+        mileage = 0
     else:
-        await message.answer("❌ Xatolik: Inquiry topilmadi yoki baza xatosi.")
+        try:
+            mileage = int(message.text.replace(' ', '').replace('km', ''))
+        except:
+            await message.answer("❌ Raqam kiriting")
+            return
+            
+    await state.update_data(mileage=mileage)
+    
+    # Color
+    data = await state.get_data()
+    import re
+    match = re.search(r'Rang[ui]?:?\s*([^\n]+)', data.get('inquiry_desc', ""), re.IGNORECASE)
+    suggested = match.group(1).strip() if match else "Topilmadi"
+    
+    await message.answer(
+        f"🎨 <b>Rangini kiriting:</b>\n\n"
+        f"📝 Arizada topildi: <i>{suggested}</i>\n\n"
+        "Yozing yoki /skip.",
+        parse_mode="HTML"
+    )
+    await state.set_state(AdminConvertStates.waiting_for_color)
+
+
+@router.message(AdminConvertStates.waiting_for_color)
+async def process_conversion_color(message: Message, state: FSMContext):
+    color = message.text if message.text != "/skip" else None
+    await state.update_data(color=color)
+    
+    await message.answer(
+        "📝 <b>Tavsif (Description) ni tahrirlang:</b>\n\n"
+        "Hozirgi matnni nusxalab, kerakli joyini o'zgartirib yuboring.\n"
+        "Yoki yangi matn yozing.",
+        parse_mode="HTML"
+    )
+    data = await state.get_data()
+    await message.answer(f"<code>{data.get('inquiry_desc', '')}</code>", parse_mode="HTML")
+    await state.set_state(AdminConvertStates.waiting_for_description)
+
+
+@router.message(AdminConvertStates.waiting_for_description)
+async def process_conversion_desc(message: Message, state: FSMContext):
+    desc = message.text
+    if desc == "/skip": 
+        data = await state.get_data()
+        desc = data.get('inquiry_desc', '')
         
+    await state.update_data(description=desc)
+    
+    # Confirm
+    data = await state.get_data()
+    
+    text = (
+        "✅ <b>YANGI ARIZA -> KATALOG</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"🚗 Moshina: <b>{data['inquiry_brand']} {data['inquiry_model']}</b> ({data['inquiry_year']})\n"
+        f"💰 Narx: <b>{data['price']:,.0f} $</b>\n"
+        f"🛣 Probeg: {data['mileage']:,} km\n"
+        f"🎨 Rang: {data['color'] or 'Noma\'lum'}\n\n"
+        f"📝 Tavsif: <i>{desc}</i>\n\n"
+        "Tasdiqlaysizmi?"
+    )
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Tasdiqlash", callback_data="convert:confirm")],
+        [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="convert:cancel")]
+    ])
+    
+    await message.answer(text, reply_markup=kb, parse_mode="HTML")
+    await state.set_state(AdminConvertStates.confirm_conversion)
+
+
+@router.callback_query(F.data == "convert:confirm", AdminConvertStates.confirm_conversion)
+async def confirm_conversion_final(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    
+    async with async_session_maker() as session:
+        try:
+            new_car = await convert_inquiry_to_car(
+                session,
+                inquiry_id=data['inquiry_id'],
+                price=data['price'],
+                brand=data['inquiry_brand'],
+                model=data['inquiry_model'],
+                year=data['inquiry_year'],
+                description=data['description'],
+                images=data['inquiry_images'],
+                mileage=data['mileage'],
+                color=data['color']
+            )
+            
+            # Publish to Channel automatically? (Optional, maybe ask separately or do it)
+            # await publish_admin_car(new_car.to_dict()) # If needed
+            
+            await callback.message.edit_text(
+                f"✅ <b>Muvaffaqiyatli qo'shildi!</b>\n"
+                f"ID: {new_car.id}",
+                parse_mode="HTML"
+            )
+            # Show car management menu
+            await show_admin_car_details(callback.message, new_car.id)
+            
+        except Exception as e:
+            logger.error(f"Conversion error: {e}")
+            await callback.answer("Xatolik bo'ldi")
+            
     await state.clear()
+
+
+@router.callback_query(F.data == "convert:cancel", AdminConvertStates.confirm_conversion)
+async def cancel_conversion(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.edit_text("❌ Bekor qilindi")
 
 
 @router.message(F.text == "📋 Admin: Moshinalar")

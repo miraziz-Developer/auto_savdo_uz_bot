@@ -78,7 +78,11 @@ class BroadcastStates(StatesGroup):
 class AdminConvertStates(StatesGroup):
     """Admin: Convert inquiry to car"""
     waiting_for_price = State()
-    waiting_for_confirmation = State()
+    waiting_for_mileage = State()
+    waiting_for_color = State()
+    waiting_for_transmission = State()
+    waiting_for_description = State()
+    confirm_conversion = State()
 
 
 # ====== NEW STATES ======
