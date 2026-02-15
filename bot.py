@@ -1,7 +1,9 @@
 """
 Main bot application — Optimized for Free Tier (No Redis, No Celery)
+Performance: Minimal logging, optimized pools, graceful shutdown
 """
 import asyncio
+import signal
 import sys
 from loguru import logger
 from aiogram import Bot, Dispatcher
@@ -19,14 +21,20 @@ from handlers import (
 )
 from utils.notifications import set_bot_instance
 from utils.followup import process_pending_followups
-from scrapers.scraper_manager import run_scraper_task
 
-# Configure logging
+# Configure logging — WARNING level for production (less disk/CPU usage)
 logger.remove()
 logger.add(
     sys.stderr,
-    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
-    level="INFO"
+    format="{time:HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
+    level="WARNING"  # Only warnings and errors (was INFO — too verbose)
+)
+# Separate INFO logger for critical startup messages only
+logger.add(
+    sys.stderr,
+    format="{time:HH:mm:ss} | {level: <8} | {message}",
+    level="INFO",
+    filter=lambda record: record["name"] == "__main__"  # Only main module
 )
 
 
@@ -35,9 +43,7 @@ async def on_startup(bot: Bot):
     logger.info("Bot starting up...")
     set_bot_instance(bot)
     
-    # Initialize database
     try:
-        # Hide password for security log
         safe_url = settings.database_url.split('@')[-1] if '@' in settings.database_url else "UNKNOWN"
         logger.info(f"Connecting to DB Host: {safe_url}")
     except: pass
@@ -58,15 +64,15 @@ async def on_startup(bot: Bot):
         try:
             await bot.send_message(
                 admin_id,
-                "🟢 <b>BOT ISHGA TUSHDI! (LITE MODE)</b>\n"
+                "🟢 <b>BOT ISHGA TUSHDI!</b>\n"
                 "━━━━━━━━━━━━━━━━━━━━━━\n"
-                "⚡ RAM Optimallashtirildi\n"
-                "🧹 Toza xotira rejimi\n"
-                "🤖 Scheduler fonida ishlaydi",
+                "⚡ Optimallashtirilgan rejim\n"
+                "🧹 Toza xotira\n"
+                "🤖 Scheduler fonida",
                 parse_mode="HTML"
             )
-        except Exception as e:
-            logger.error(f"Error notifying admin {admin_id}: {e}")
+        except Exception:
+            pass
     
     logger.info(f"Admin IDs: {settings.admin_list}")
 
@@ -80,8 +86,7 @@ async def on_shutdown(bot: Bot):
         try:
             await bot.send_message(
                 admin_id,
-                "🔴 <b>Bot to'xtadi</b>\n"
-                "Qayta ishga tushirilmoqda...",
+                "🔴 <b>Bot to'xtadi</b>\nQayta ishga tushirilmoqda...",
                 parse_mode="HTML"
             )
         except:
@@ -90,13 +95,12 @@ async def on_shutdown(bot: Bot):
 
 async def main():
     """Main function"""
-    # Create bot
     bot = Bot(
         token=settings.bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML)
     )
     
-    # Create dispatcher with Memory Storage (RAM efficient)
+    # Memory Storage (RAM efficient, no Redis needed)
     storage = MemoryStorage()
     dp = Dispatcher(storage=storage)
     logger.info("Using MemoryStorage for FSM (Lite Mode)")
@@ -106,46 +110,66 @@ async def main():
     dp.shutdown.register(on_shutdown)
     
     # Register all routers
-    dp.include_router(common.router)       # /start, /help
-    dp.include_router(buy.router)          # 🛒 Moshina olish
-    dp.include_router(price_check.router)  # 📊 Narxni baholash
-    dp.include_router(pipeline.router)     # 📋 Pipeline (Admin)
-    dp.include_router(admin.router)        # Admin commands
-    dp.include_router(crm.router)          # CRM Dashboard
-    dp.include_router(sell.router)         # ➕ E'lon berish
-    dp.include_router(catalog.router)      # 🔍 Qidiruv
-    dp.include_router(subscriptions.router) # 🔔 Obunalar
-    dp.include_router(favorites.router)    # ❤️ Sevimlilar
-    dp.include_router(reviews.router)      # ⭐ Sharhlar
-    dp.include_router(gallery.router)      # 🖼 Galereya
-    dp.include_router(analytics.router)    # 📊 Statistika
+    dp.include_router(common.router)
+    dp.include_router(buy.router)
+    dp.include_router(price_check.router)
+    dp.include_router(pipeline.router)
+    dp.include_router(admin.router)
+    dp.include_router(crm.router)
+    dp.include_router(sell.router)
+    dp.include_router(catalog.router)
+    dp.include_router(subscriptions.router)
+    dp.include_router(favorites.router)
+    dp.include_router(reviews.router)
+    dp.include_router(gallery.router)
+    dp.include_router(analytics.router)
     
     logger.info("All routers registered!")
 
-    # --- BACKGROUND SCHEDULER (Lite Version) ---
+    # --- BACKGROUND SCHEDULER ---
     scheduler = AsyncIOScheduler()
     
-    # 1. Scraper (Har 4 soatda)
-    scheduler.add_job(run_scraper_task, 'interval', hours=4)
-    logger.info("Job added: Scraper (every 4h)")
+    # Scraper OFF — Free Tier uchun juda og'ir (Browser RAM yeydi)
+    # scheduler.add_job(run_scraper_task, 'interval', hours=4)
     
-    # 2. Follow-ups (Har 5 daqiqada)
+    # Follow-ups (Har 10 daqiqada — was 5 min, too frequent)
     async def periodic_followups():
-        await process_pending_followups(bot)
-    scheduler.add_job(periodic_followups, 'interval', minutes=5)
-    logger.info("Job added: Follow-ups (every 5m)")
+        try:
+            await process_pending_followups(bot)
+        except Exception as e:
+            logger.error(f"Followup error: {e}")
+
+    scheduler.add_job(periodic_followups, 'interval', minutes=10)
+    logger.info("Job added: Follow-ups (every 10m)")
     
-    # Start Scheduler
     scheduler.start()
+    
+    # --- GRACEFUL SIGTERM HANDLING ---
+    loop = asyncio.get_event_loop()
+    
+    def handle_sigterm(*args):
+        print("Received SIGTERM signal")
+        loop.call_soon_threadsafe(lambda: asyncio.ensure_future(graceful_shutdown(dp, bot)))
+    
+    signal.signal(signal.SIGTERM, handle_sigterm)
     
     # Start polling
     try:
         logger.info("Starting bot polling...")
-        # Drop pending updates
         await bot.delete_webhook(drop_pending_updates=True)
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
+        scheduler.shutdown(wait=False)
         await bot.session.close()
+
+
+async def graceful_shutdown(dp: Dispatcher, bot: Bot):
+    """Gracefully stop the bot on SIGTERM"""
+    try:
+        await dp.stop_polling()
+        await on_shutdown(bot)
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

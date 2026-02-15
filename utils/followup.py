@@ -1,6 +1,6 @@
 """
 Follow-up System — Avtomatik xabar yuborish tizimi
-Celery task orqali ishlamoqda: pending follow-uplarni tekshirib, yuboradi.
+Optimized: Single session per batch, proper error handling
 """
 import asyncio
 from datetime import datetime
@@ -18,51 +18,44 @@ from database.crud import (
 async def process_pending_followups(bot: Bot):
     """
     Barcha pending follow-up'larni tekshirib, yuboradi.
-    Bu funksiya scheduler yoki celery task tomonidan chaqiriladi.
+    OPTIMIZED: Bitta session ishlatadi, ortiqcha connectionlarni kamaytiradi.
     """
     try:
         async with async_session_maker() as session:
             pending = await get_pending_followups(session)
-        
-        if not pending:
-            return {'processed': 0}
-        
-        sent_count = 0
-        failed_count = 0
-        
-        for followup in pending:
-            try:
-                # Send message to user
-                await bot.send_message(
-                    chat_id=followup.user_id,
-                    text=followup.message_text,
-                    parse_mode="HTML"
-                )
-                
-                # Mark as sent
-                async with async_session_maker() as session:
+            
+            if not pending:
+                return {'processed': 0}
+            
+            sent_count = 0
+            failed_count = 0
+            
+            for followup in pending:
+                try:
+                    await bot.send_message(
+                        chat_id=followup.user_id,
+                        text=followup.message_text,
+                        parse_mode="HTML"
+                    )
+                    
+                    # Same session — no new connection needed
                     await mark_followup_sent(session, followup.id)
-                
-                sent_count += 1
-                logger.info(
-                    f"Follow-up sent: type={followup.message_type}, "
-                    f"user={followup.user_id}, target={followup.target_type}#{followup.target_id}"
-                )
-                
-                # Small delay to avoid flooding
-                await asyncio.sleep(0.5)
-                
-            except Exception as e:
-                failed_count += 1
-                logger.error(f"Failed to send follow-up {followup.id}: {e}")
-                
-                # If user blocked the bot, mark as sent to avoid repeated attempts
-                if "Forbidden" in str(e) or "blocked" in str(e).lower():
-                    async with async_session_maker() as session:
+                    sent_count += 1
+                    
+                    # Small delay to avoid flooding
+                    await asyncio.sleep(0.3)
+                    
+                except Exception as e:
+                    failed_count += 1
+                    logger.warning(f"Follow-up {followup.id} failed: {e}")
+                    
+                    # If user blocked the bot, mark as sent
+                    if "Forbidden" in str(e) or "blocked" in str(e).lower():
                         await mark_followup_sent(session, followup.id)
-        
-        logger.info(f"Follow-ups processed: sent={sent_count}, failed={failed_count}")
-        return {'processed': sent_count, 'failed': failed_count}
+            
+            if sent_count > 0:
+                logger.info(f"Follow-ups: sent={sent_count}, failed={failed_count}")
+            return {'processed': sent_count, 'failed': failed_count}
     
     except Exception as e:
         logger.error(f"Error processing follow-ups: {e}")
@@ -71,10 +64,7 @@ async def process_pending_followups(bot: Bot):
 
 async def send_admin_digest(bot: Bot):
     """
-    Har kuni ertalab admin'ga digest yuboradi:
-    - Yangi murojaatlar
-    - Follow-up kerak bo'lgan arizalar
-    - Hot leads
+    Har kuni ertalab admin'ga digest yuboradi
     """
     try:
         async with async_session_maker() as session:
@@ -87,7 +77,6 @@ async def send_admin_digest(bot: Bot):
         text = "🌅 <b>KUNLIK DIGEST</b>\n"
         text += f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
         
-        # Pending inquiries
         text += f"📥 <b>Kutayotgan murojaatlar: {len(pending_inquiries)}</b>\n"
         for inq in pending_inquiries[:3]:
             urgency_emoji = {"urgent": "🔴", "high": "🟠", "normal": "🟡", "low": "🟢"}.get(inq.urgency, "⚪")
@@ -97,7 +86,6 @@ async def send_admin_digest(bot: Bot):
         
         text += "\n"
         
-        # Buy requests
         text += f"🛒 <b>Sotib olish arizalari: {len(pending_buys)}</b>\n"
         for req in pending_buys[:3]:
             text += f"   📋 #{req.id} — {req.brand or '-'} {req.model or '-'} (Ball: {req.lead_score})\n"
@@ -106,7 +94,6 @@ async def send_admin_digest(bot: Bot):
         
         text += "\n"
         
-        # Hot leads
         text += f"🔥 <b>Hot leads (60+ ball):</b>\n"
         for user in hot_leads:
             name = user.full_name or user.username or f"ID: {user.telegram_id}"

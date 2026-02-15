@@ -1,22 +1,29 @@
 """
-Database connection and session management
+Database connection and session management — Optimized for Free Tier
 """
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy.pool import AsyncAdaptedQueuePool
 from loguru import logger
 
 from config import settings
 from database.models import Base
 
 
-# Create async engine
+# Create async engine — OPTIMIZED for Free Tier (512MB RAM)
 engine = create_async_engine(
     settings.database_url,
     echo=False,
-    pool_size=10,
-    max_overflow=20,
-    pool_recycle=3600,
+    pool_size=3,           # Was 10 — 3 is enough for single-bot
+    max_overflow=2,        # Was 20 — minimal overflow
+    pool_recycle=1800,     # Recycle every 30 min (was 60 min)
+    pool_timeout=10,       # Timeout 10 sec (don't hang forever)
+    pool_pre_ping=True,    # Check connection health before use
+    connect_args={
+        "command_timeout": 10,      # Query timeout 10 sec
+        "server_settings": {
+            "statement_timeout": "15000",  # 15 sec max per statement
+        }
+    }
 )
 
 # Create session factory
