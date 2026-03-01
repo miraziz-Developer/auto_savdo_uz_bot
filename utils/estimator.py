@@ -108,3 +108,46 @@ class PriceEstimator:
         if diff_percent > -5: return "fair_price"      # Normal narx
         if diff_percent > -15: return "slightly_high"  # Biroz qimmat
         return "expensive"                             # Qimmat
+
+    @staticmethod
+    def is_good_deal_advanced(car_data: Dict, market_avg: float) -> bool:
+        """
+        Advanced 'Good Deal' Analysis (Score >= 5)
+        
+        Criteria:
+        1. Price < Avg * 0.85 (+3 points)
+        2. Condition == 'ideal' (+2 points)
+        3. Year >= 2020 (+1 point)
+        4. Mileage < 50000 (+1 point)
+        """
+        score = 0
+        price = car_data.get('price', 0)
+        
+        # 1. Price Check
+        if market_avg > 0 and price < (market_avg * 0.85):
+            score += 3
+        elif market_avg > 0 and price < (market_avg * 0.90):
+            score += 2 # Slightly good price
+            
+        # 2. Condition / Keywords Check
+        desc = (car_data.get('description') or "").lower()
+        if 'ideal' in desc or 'yangi' in desc or 'kraska toza' in desc:
+            score += 2
+        elif 'yaxshi' in desc:
+            score += 1
+            
+        # 3. Year Check
+        year = car_data.get('year', 0)
+        if year >= 2020:
+            score += 1
+            
+        # 4. Mileage Check
+        mileage = car_data.get('mileage', 100000)
+        if mileage > 0 and mileage < 50000:
+            score += 1
+            
+        # 5. Damaged/Bad Check (Penalty)
+        if 'dtp' in desc or 'udar' in desc or 'kraska bor' in desc:
+            score -= 3
+            
+        return score >= 5, score

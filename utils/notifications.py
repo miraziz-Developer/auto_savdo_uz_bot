@@ -246,8 +246,13 @@ async def publish_scraped_deal(listing_data: Dict):
             f"#avtosavdo #{source.lower()} #automarket"
         )
         
-        channel_id = settings.scraped_deals_channel_id or settings.telegram_channel_id
+        channel_id = settings.scraped_deals_channel_id
         
+        if not channel_id:
+            # If no dedicated channel for scraped deals is set, DO NOT post to main channel
+            # to avoid leaking scraped content to users.
+            return
+
         await bot.send_message(
             chat_id=channel_id,
             text=text,
@@ -258,7 +263,8 @@ async def publish_scraped_deal(listing_data: Dict):
         logger.error(f"Publish scraped deal error: {e}")
 
     # Notify matching users individually
-    await notify_matching_users_scraped(listing_data)
+    # DISABLED: Scraped deals are for internal use only (admins)
+    # await notify_matching_users_scraped(listing_data)
 
 
 async def publish_admin_car(car_data: Dict):

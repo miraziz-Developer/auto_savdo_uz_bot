@@ -456,4 +456,108 @@ async def show_scraped_deal(message: Message, deal):
         except Exception:
             await message.answer(text, reply_markup=markup, parse_mode="HTML")
     else:
+        # No main image
         await message.answer(text, reply_markup=markup, parse_mode="HTML")
+
+@router.message(F.text)
+async def smart_search(message: Message, state: FSMContext):
+    """
+    Aqlli qidiruv (Smart Search)
+    Foydalanuvchi "Gentra 2020" yoki "Cobalt oq" deb yozganda ishlaydi.
+    """
+    # Ignore commands or specific menu items handled elsewhere
+    if message.text.startswith("/") or message.text in ["🚗 Katalog", "🔍 Qidiruv", "📉 Arzon variantlar", "🏠 Bosh menyu"]:
+        return
+
+    text = message.text.lower()
+    
+    # Simple extraction logic
+    brand = None
+    model = None
+    year = None
+    price = None
+    
+    # Brands & Models
+    keywords = {
+        'cobalt': ('Chevrolet', 'Cobalt'),
+        'gentra': ('Chevrolet', 'Gentra'),
+        'lacetti': ('Chevrolet', 'Lacetti'),
+        'malibu': ('Chevrolet', 'Malibu'),
+        'tracker': ('Chevrolet', 'Tracker'),
+        'spark': ('Chevrolet', 'Spark'),
+        'nexia': ('Chevrolet', 'Nexia'),
+        'damas': ('Chevrolet', 'Damas'),
+        'kia': ('Kia', None),
+        'k5': ('Kia', 'K5'),
+        'hyundai': ('Hyundai', None),
+        'santa fe': ('Hyundai', 'Santa Fe'),
+        'sonata': ('Hyundai', 'Sonata'),
+        'toyota': ('Toyota', None),
+        'camry': ('Toyota', 'Camry'),
+        'prado': ('Toyota', 'Prado'),
+        'byd': ('BYD', None),
+        'song': ('BYD', 'Song'),
+        'han': ('BYD', 'Han'),
+    }
+    
+    for key, (b, m) in keywords.items():
+        if key in text:
+            brand = b
+            if m: model = m
+            break
+            
+    # Year (e.g. 2020)
+    import re
+    year_match = re.search(r'\b(20\d{2})\b', text)
+    if year_match:
+        year = int(year_match.group(1))
+        
+    # Price (e.g. 15000, 15k, 15 ming)
+    # This acts as max price
+    price_match = re.search(r'\b(\d{2,5})\b', text)
+    if price_match:
+        val = int(price_match.group(1))
+        # Logic: if < 100 assume it's thousands (e.g. 15 = 15000)
+        # if > 1000 assume exact
+        if val < 100: 
+            price = val * 1000
+        elif val > 1000:
+            price = val
+
+    # Perform search if at least Brand is found
+    if brand or model or year or price:
+        async with async_session_maker() as session:
+            cars = await get_cars(
+                session,
+                brand=brand,
+                model=model,
+                year_from=year,
+                price_to=price,
+                limit=10
+            )
+            
+        if cars:
+            await message.answer(
+                f"🔍 <b>Qidiruv natijalari:</b>\n"
+                f"{brand or ''} {model or ''} {year or ''} {price or ''}\n\n"
+                f"✅ {len(cars)} ta moshina topildi!",
+                parse_mode="HTML"
+            )
+            await show_car_page(message, cars, page=1)
+        else:
+            await message.answer(
+                "😔 So'rovingiz bo'yicha hech narsa topilmadi.\n"
+                "Boshqa parametrlarni sinab ko'ring.",
+                parse_mode="HTML"
+            )
+    else:
+        # If no keywords found, maybe it's just chatter. 
+        # But we can respond nicely as a help tip.
+        await message.answer(
+            "🤖 <b>Men moshina qidirish yordamchisiman!</b>\n\n"
+            "Menga shunday yozishingiz mumkin:\n"
+            "🔹 <i>Gentra 2022</i>\n"
+            "🔹 <i>Cobalt oq</i>\n"
+            "🔹 <i>15000 gacha Malibu</i>",
+            parse_mode="HTML"
+        )

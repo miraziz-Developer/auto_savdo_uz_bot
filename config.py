@@ -56,6 +56,16 @@ class Settings(BaseSettings):
     enable_push_notifications: bool = Field(default=True, alias="ENABLE_PUSH_NOTIFICATIONS")
     weekly_push_day: str = Field(default="monday", alias="WEEKLY_PUSH_DAY")
     weekly_push_time: str = Field(default="09:00", alias="WEEKLY_PUSH_TIME")
+
+    # MinIO / S3 Storage
+    minio_endpoint: str = Field(default="minio:9000", alias="MINIO_ENDPOINT")
+    minio_access_key: str = Field(default="minioadmin", alias="MINIO_ACCESS_KEY")
+    minio_secret_key: str = Field(default="minioadmin", alias="MINIO_SECRET_KEY")
+    minio_bucket_name: str = Field(default="avtosavdo-images", alias="MINIO_BUCKET_NAME")
+    minio_secure: bool = Field(default=False, alias="MINIO_SECURE")
+
+    # Monitoring (Sentry)
+    sentry_dsn: Optional[str] = Field(default="", alias="SENTRY_DSN")
     
     @property
     def database_url(self) -> str:

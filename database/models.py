@@ -138,6 +138,12 @@ class Subscription(Base):
     # Relationship
     user: Mapped["User"] = relationship(back_populates="subscriptions")
 
+    __table_args__ = (
+        Index("idx_sub_brand", "brand"),
+        Index("idx_sub_model", "model"),
+        Index("idx_sub_price", "price_to"),
+    )
+
 
 class Inquiry(Base):
     """Customer inquiries and pre-orders"""

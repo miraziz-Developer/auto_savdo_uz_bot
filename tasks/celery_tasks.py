@@ -89,33 +89,22 @@ async def process_new_listings():
             logger.info(f"Processing {len(listings)} new listings")
             
             for listing in listings:
-                # Create a temporary Car-like object for matching
-                temp_car = Car(
-                    brand=listing.brand,
-                    model=listing.model,
-                    year=listing.year,
-                    price=listing.price
-                )
+                # OLD LOGIC REMOVED: Do not notify users about scraped listings
+                # Instead, notify admin if it's a good deal and not yet notified
                 
-                matching_subs = await find_matching_subscriptions(session, temp_car)
-                
-                if matching_subs:
-                    logger.info(f"Found {len(matching_subs)} matching subscriptions for listing {listing.id}")
+                if listing.is_good_deal and not listing.notified_admin:
+                    from utils.notifications import notify_admin_about_good_deal
+                    await notify_admin_about_good_deal({
+                        'title': listing.title,
+                        'brand': listing.brand, 
+                        'price': listing.price,
+                        'source': listing.source,
+                        'url': listing.url
+                    })
                     
-                    # Notify subscribers
-                    for sub in matching_subs:
-                        await notify_subscribers_about_car(
-                            user_id=sub.user_id,
-                            listing_data={
-                                'title': listing.title,
-                                'brand': listing.brand,
-                                'model': listing.model,
-                                'year': listing.year,
-                                'price': listing.price,
-                                'url': listing.url,
-                                'source': listing.source
-                            }
-                        )
+                    # Update notified flag
+                    listing.notified_admin = True
+                    # (This will be committed with mark_listing_processed or separate commit if needed)
                 
                 # Mark as processed
                 await mark_listing_processed(session, listing.id)
@@ -241,7 +230,7 @@ async def recalculate_all_scores():
 celery_app.conf.beat_schedule = {
     'scrape-every-5-minutes': {
         'task': 'scrape_websites',
-        'schedule': settings.scraping_interval,  # 300 seconds = 5 minutes
+        'schedule': 900,  # 900 seconds = 15 minutes
     },
     'process-followups-every-5-minutes': {
         'task': 'process_followups',

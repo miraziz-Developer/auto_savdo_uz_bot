@@ -184,36 +184,15 @@ class ScraperManager:
 
                     # Deal Score Calculation (Smart AI Logic)
                     from utils.estimator import PriceEstimator
-                    deal_quality = PriceEstimator.analyze_deal(listing.get('price', 0), avg_price)
+                    is_good_deal, score = PriceEstimator.is_good_deal_advanced(listing, avg_price)
                     
-                    score = 50  # Baseline
+                    # Log if good deal
+                    if is_good_deal:
+                        savings = avg_price - listing.get('price', 0)
+                        logger.info(f"💎 GOOD DEAL FOUND: {listing['title']} (Score: {score}, Savings: ${savings:.0f})")
                     
-                    if deal_quality == 'super_cheap':
-                        score += 35  # Juda arzon!
-                        is_good_deal = True
-                        logger.info(f"💎 SUPER DEAL FOUND: {listing['title']} (-20% vs Market)")
-                    elif deal_quality == 'good_deal':
-                        score += 20
-                        is_good_deal = True
-                    elif deal_quality == 'expensive':
-                        score -= 25
-                    
-                    # Mileage Bonus
-                    if listing.get('mileage', 100000) < 20000: score += 10
-                    if listing.get('mileage', 100000) < 5000: score += 15  # Deyarli yangi
-                    
-                    # Keywords Analysis
-                    desc_lower = (listing.get('description') or "").lower()
-                    if 'srochno' in desc_lower: score += 10
-                    if 'naqd' in desc_lower: score += 5
-                    if 'kelishamiz' in desc_lower: score += 5
-                    
-                    # Penalty for damage
-                    if 'kraska' in desc_lower or 'dtp' in desc_lower or 'udar' in desc_lower: 
-                        score -= 30
-                        is_good_deal = False  # Kraska bo'lsa "Good Deal" bo'lmaydi (xavfli)
-                    
-                    listing['deal_score'] = min(100, max(0, score))
+                    listing['deal_score'] = min(100, max(0, score * 10 + 50)) # Normalize 0-5 to 50-100 scale roughly for display if needed
+                    listing['is_good_deal'] = is_good_deal
 
                     # Smart Notification Logic
                     location = listing.get('location', '').lower()

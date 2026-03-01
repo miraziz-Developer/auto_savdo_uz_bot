@@ -15,7 +15,7 @@ from states.states import BuyRequestStates
 from config import settings
 from database.database import async_session_maker
 from database.crud import (
-    create_buy_request, get_user_by_id, update_user_lead_data,
+    create_buy_request, get_or_create_user, get_user_by_id, update_user_lead_data,
     find_matching_cars_for_request, schedule_followups_for_buy_request,
     get_buy_request_by_id, get_user_buy_requests
 )
@@ -411,8 +411,13 @@ async def confirm_buy_request(callback: CallbackQuery, state: FSMContext):
     
     async with async_session_maker() as session:
         # Calculate lead score
-        user = await get_user_by_id(session, user_id)
-        user_lead_score = user.lead_score if user else 0
+        user = await get_or_create_user(
+            session, 
+            telegram_id=user_id, 
+            username=callback.from_user.username,
+            full_name=callback.from_user.full_name
+        )
+        user_lead_score = user.lead_score
         
         urgency_detected = detect_urgency_keywords(data.get('additional_notes'))
         

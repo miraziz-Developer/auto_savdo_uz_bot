@@ -34,8 +34,11 @@ def car_management_keyboard(car_id: int = None) -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton(text="📢 Kanalga yuborish", callback_data=f"admin:car:publish:{car_id}"),
-            InlineKeyboardButton(text="🗑 O'chirish", callback_data=f"admin:car:delete:{car_id}")
+            InlineKeyboardButton(text="🔄 Status", callback_data=f"admin:car:status:{car_id}")
         ],
+        [
+            InlineKeyboardButton(text="🗑 O'chirish", callback_data=f"admin:car:delete:{car_id}")
+        ]
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 

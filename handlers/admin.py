@@ -142,9 +142,27 @@ async def process_car_year(message: Message, state: FSMContext):
 
 @router.message(AddCarStates.waiting_for_price)
 async def process_car_price(message: Message, state: FSMContext):
-    """Process car price"""
+    """Process car price (Add or Edit)"""
     try:
         price = float(message.text.replace(" ", "").replace(",", ""))
+        data = await state.get_data()
+        
+        # Check if EDIT mode
+        if data.get('edit_car_id'):
+            car_id = data['edit_car_id']
+            async with async_session_maker() as session:
+                await update_car(session, car_id, price=price)
+            
+            await message.answer(f"✅ Narx yangilandi: {price:,.0f} $")
+            await state.clear()
+            # Show edit menu again
+            from keyboards.admin_keyboards import car_management_keyboard
+            # We can't easily call callback handler from here, so just show menu
+            # Or better, simulate callback to show edit menu? simplify: just show text
+            await message.answer("Tahrirlash yakunlandi / Bosh menyuga qaytish", reply_markup=admin_main_menu_keyboard())
+            return
+
+        # Normal ADD flow
         await state.update_data(price=price)
         await message.answer(
             f"✅ Narx: <b>{price:,.0f} $</b>\n\n"
@@ -159,15 +177,29 @@ async def process_car_price(message: Message, state: FSMContext):
 
 @router.message(AddCarStates.waiting_for_mileage)
 async def process_car_mileage(message: Message, state: FSMContext):
-    """Process car mileage"""
+    """Process car mileage (Add or Edit)"""
+    mileage = None
     if message.text != "/skip":
         try:
             mileage = int(message.text.replace(" ", "").replace(",", ""))
-            await state.update_data(mileage=mileage)
         except ValueError:
             await message.answer("❌ Iltimos, to'g'ri probeg kiriting")
             return
-    
+            
+    data = await state.get_data()
+    # Check if EDIT mode
+    if data.get('edit_car_id'):
+        car_id = data['edit_car_id']
+        async with async_session_maker() as session:
+            await update_car(session, car_id, mileage=mileage)
+        
+        await message.answer(f"✅ Probeg yangilandi: {mileage or 0:,} km")
+        await state.clear()
+        await message.answer("Tahrirlash yakunlandi", reply_markup=admin_main_menu_keyboard())
+        return
+
+    # Normal ADD flow
+    await state.update_data(mileage=mileage)
     await message.answer(
         "🎨 <b>Rangini kiriting:</b>\n"
         "<i>Yoki /skip bosing</i>",
@@ -178,10 +210,24 @@ async def process_car_mileage(message: Message, state: FSMContext):
 
 @router.message(AddCarStates.waiting_for_color)
 async def process_car_color(message: Message, state: FSMContext):
-    """Process car color"""
-    if message.text != "/skip":
-        await state.update_data(color=message.text)
+    """Process car color (Add or Edit)"""
+    color = message.text
+    if message.text == "/skip": color = None
     
+    data = await state.get_data()
+    # Check EDIT mode
+    if data.get('edit_car_id'):
+        car_id = data['edit_car_id']
+        async with async_session_maker() as session:
+            await update_car(session, car_id, color=color)
+        
+        await message.answer(f"✅ Rang yangilandi: {color or 'N/A'}")
+        await state.clear()
+        await message.answer("Tahrirlash yakunlandi", reply_markup=admin_main_menu_keyboard())
+        return
+
+    # Normal ADD flow
+    await state.update_data(color=color)
     await message.answer(
         "📝 <b>Tavsifini kiriting:</b>\n"
         "<i>Yoki /skip bosing</i>",
@@ -192,10 +238,24 @@ async def process_car_color(message: Message, state: FSMContext):
 
 @router.message(AddCarStates.waiting_for_description)
 async def process_car_description(message: Message, state: FSMContext):
-    """Process car description"""
-    if message.text != "/skip":
-        await state.update_data(description=message.text)
-    
+    """Process car description (Add or Edit)"""
+    desc = message.text
+    if message.text == "/skip": desc = None
+
+    data = await state.get_data()
+    # Check EDIT mode
+    if data.get('edit_car_id'):
+        car_id = data['edit_car_id']
+        async with async_session_maker() as session:
+            await update_car(session, car_id, description=desc)
+        
+        await message.answer("✅ Tavsif yangilandi!")
+        await state.clear()
+        await message.answer("Tahrirlash yakunlandi", reply_markup=admin_main_menu_keyboard())
+        return
+
+    # Normal ADD flow
+    await state.update_data(description=desc)
     await message.answer(
         "📸 <b>Moshina rasmlarini yuboring</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -222,22 +282,64 @@ async def process_car_images(message: Message, state: FSMContext):
     if len(photos) == 1:
         await message.answer("✅ Asosiy rasm qabul qilindi. Yana rasmlarni yuboravering...")
 
+@router.callback_query(F.data.startswith("edit:photos:"))
+async def edit_car_photos(callback: CallbackQuery, state: FSMContext):
+    car_id = int(callback.data.split(":")[2])
+    await state.update_data(edit_car_id=car_id, edit_field="photos", photos_list=[])
+    await state.set_state(AddCarStates.waiting_for_images)
+    await callback.message.answer(
+        "📸 <b>Yangi rasmlarni yuboring</b>\n"
+        "Eski rasmlar o'rniga shu yangilari qo'yiladi.\n"
+        "Birinchi rasm asosiy bo'ladi.\n"
+        "Tugatgach <b>✅ Tayyor!</b> bosing.",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="✅ Tayyor!")]],
+            resize_keyboard=True
+        ),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
 @router.message(AddCarStates.waiting_for_images, (F.text == "/done") | (F.text == "✅ Tayyor!") | (F.text == "/skip"))
 async def process_car_images_done(message: Message, state: FSMContext):
-    """Finish image collection"""
+    """Finish image collection (Add or Edit)"""
     data = await state.get_data()
     photos = data.get('photos_list', [])
     
+    images_data = None
     if photos:
-        await state.update_data(images={
+        images_data = {
             'main': photos[0],
             'gallery': photos[1:] if len(photos) > 1 else []
-        })
+        }
     elif message.text == "/skip":
-        await state.update_data(images=None)
+        images_data = None
     else:
         await message.answer("Hech bo'lmasa bitta rasm yuboring yoki /skip bosing.")
         return
+
+    # Check EDIT mode
+    if data.get('edit_car_id'):
+        car_id = data['edit_car_id']
+        # If user skipped, maybe we don't want to wipe existing photos?
+        # Assuming if skipped in edit mode -> no change.
+        if images_data:
+            async with async_session_maker() as session:
+                await update_car(session, car_id, images=images_data)
+            await message.answer("✅ Rasmlar yangilandi!")
+        else:
+            await message.answer("Rasmlar o'zgarishsiz qoldirildi.")
+            
+        await state.clear()
+        await message.answer("Tahrirlash yakunlandi", reply_markup=admin_main_menu_keyboard())
+        return
+
+    # Normal ADD flow
+    if images_data:
+        await state.update_data(images=images_data)
+    else:
+        await state.update_data(images=None)
 
     await show_car_confirmation(message, state)
 
@@ -548,6 +650,9 @@ async def admin_edit_car(callback: CallbackQuery):
             InlineKeyboardButton(text="🎨 Rangni o'zgartirish", callback_data=f"edit:color:{car_id}"),
             InlineKeyboardButton(text="🛣 Probegni o'zgartirish", callback_data=f"edit:mileage:{car_id}"),
         ],
+        [
+            InlineKeyboardButton(text="📸 Rasmlarni o'zgartirish", callback_data=f"edit:photos:{car_id}"),
+        ],
         [InlineKeyboardButton(text="🔙 Ortga", callback_data="admin:cars:list")],
     ])
     
@@ -600,17 +705,46 @@ async def edit_car_mileage(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("admin:car:delete:"))
 async def admin_delete_car(callback: CallbackQuery):
+    """Ask for confirmation before deleting car"""
     car_id = int(callback.data.split(":")[3])
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Ha, o'chirilsin", callback_data=f"admin:car:del_confirm:{car_id}")],
+        [InlineKeyboardButton(text="❌ Yo'q, qaytish", callback_data=f"admin:car:edit:{car_id}")]
+    ])
+    
+    await callback.message.edit_text(
+        f"🗑 <b>Moshina #{car_id} ni o'chirmoqchimisiz?</b>\n\n"
+        "Bu amalni ortga qaytarib bo'lmaydi.",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+@router.callback_query(F.data.startswith("admin:car:del_confirm:"))
+async def admin_delete_car_confirm(callback: CallbackQuery):
+    """Actually delete or archive the car"""
+    car_id = int(callback.data.split(":")[3])
+    
     async with async_session_maker() as session:
-        # Actually delete or mark as unavailable
+        # Check if car exists
         car = await get_car_by_id(session, car_id)
         if car:
+            # We mark as unavailable (soft delete) or actually delete?
+            # User request: "Delete". Usually soft delete is safer.
+            # Let's do soft delete (is_available=False) + maybe a note
             car.is_available = False
+            car.is_featured = False
+            # car.pipeline_status = 'deleted' # if we had this
+            
             await session.commit()
-            await callback.answer("❌ Moshina o'chirildi (arxivlandi)")
+            await callback.answer("✅ Moshina o'chirildi (arxivlandi)")
+            
+            # Go back to list
+            await list_cars_admin(callback.message)
             await callback.message.delete()
         else:
-            await callback.answer("Xatolik: topilmadi")
+            await callback.answer("Xatolik: topilmadi", show_alert=True)
+            await list_cars_admin(callback.message)
 
 @router.callback_query(F.data.startswith("admin:car:publish:"))
 async def admin_publish_car_menu(callback: CallbackQuery):
@@ -640,6 +774,56 @@ async def admin_back_to_list(callback: CallbackQuery):
     await list_cars_admin(callback.message)
 
 
+@router.callback_query(F.data.startswith("admin:car:status:"))
+async def admin_change_status_menu(callback: CallbackQuery):
+    """Show status change options"""
+    car_id = int(callback.data.split(":")[3])
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Sotuvda (Available)", callback_data=f"status:set:{car_id}:available")],
+        [InlineKeyboardButton(text="🤝 Band qilingan (Reserved)", callback_data=f"status:set:{car_id}:reserved")],
+        [InlineKeyboardButton(text="🔴 Sotildi (Sold)", callback_data=f"status:set:{car_id}:sold")],
+        [InlineKeyboardButton(text="🔙 Ortga", callback_data=f"admin:cars:list")]
+    ])
+    
+    await callback.message.edit_reply_markup(reply_markup=keyboard)
+
+
+@router.callback_query(F.data.startswith("status:set:"))
+async def admin_set_status(callback: CallbackQuery):
+    """Set new status for car"""
+    parts = callback.data.split(":")
+    car_id = int(parts[2])
+    new_status = parts[3]
+    
+    async with async_session_maker() as session:
+        car = await get_car_by_id(session, car_id)
+        if car:
+            # Simple mapping to is_available for now
+            # If you add 'status' column later, update it here
+            if new_status == "available":
+                car.is_available = True
+                status_text = "✅ Sotuvda"
+            elif new_status == "sold":
+                car.is_available = False
+                status_text = "🔴 Sotildi"
+            else:
+                car.is_available = False # Reserved treated as unavailable logic-wise
+                status_text = "🤝 Band qilingan"
+            
+            # If you added 'status' column to Car model:
+            # car.status = new_status
+            
+            await session.commit()
+            await callback.answer(f"Status o'zgardi: {status_text}")
+            
+            # Return to list
+            await list_cars_admin(callback.message)
+            await callback.message.delete()
+        else:
+            await callback.answer("Xatolik: Moshina topilmadi")
+
+
 @router.message(F.text == "📊 Statistika")
 async def show_statistics(message: Message):
     """Show statistics"""
@@ -662,35 +846,69 @@ async def generate_full_stats(callback: CallbackQuery):
     
     analytics = SalesAnalytics()
     
+    # 1. Gather all data
+    stats = await analytics.get_summary_stats()
+    cust_stats = await analytics.get_customer_stats()
+    pop_cars = await analytics.get_popular_cars()
+    price_stats = await analytics.get_price_analysis()
+    
     # Generate charts
     report = await analytics.generate_full_report()
-    stats = await analytics.get_summary_stats()
     
+    # 2. Format the text
     summary_text = (
-        "📊 <b>TO'LIQ HISOBOT (30 kun)</b>\n"
+        "📊 <b>TO'LIQ HISOBOT</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"📈 Jami sotuvlar: <b>{stats['total_sales']} ta</b>\n"
-        f"💰 Jami foyda: <b>{stats['total_profit']:,.0f} $</b>\n"
-        f"📊 O'rtacha foyda: <b>{stats['avg_profit']:,.0f} $</b>\n"
-        f"🏆 Eng yaxshi kun: <b>{stats.get('best_day', 'N/A')}</b> ({stats.get('best_day_count', 0)} ta)"
+        "📈 <b>Savdo statistikasi (30 kun)</b>\n"
+        f"├─ Sotilganlar: <b>{stats.get('total_sales', 0)} ta</b>\n"
+        f"├─ Jami foyda: <b>{stats.get('total_profit', 0):,.0f} $</b>\n"
+        f"├─ O'rtacha foyda: <b>{stats.get('avg_profit', 0):,.0f} $</b>\n"
+        f"└─ Eng yaxshi kun: {stats.get('best_day', 'N/A')} ({stats.get('best_day_count', 0)} ta)\n\n"
+        
+        "👥 <b>Mijozlar</b>\n"
+        f"├─ Jami: <b>{cust_stats.get('total', 0)} ta</b>\n"
+        f"├─ Faol (7 kun): <b>{cust_stats.get('active', 0)} ta</b>\n"
+        f"└─ Yangi (7 kun): <b>{cust_stats.get('new', 0)} ta</b>\n\n"
+        
+        "🔥 <b>Eng mashhur mashinalar (Top 3)</b>\n"
+    )
+    
+    i = 1
+    for car in pop_cars:
+        summary_text += f"├─ {i}. {car['brand']} {car['model']} ({car['views']} ko'rildi)\n"
+        i += 1
+    if not pop_cars:
+        summary_text += "└─ Ma'lumot yo'q\n"
+    
+    summary_text += (
+        "\n💰 <b>Narx tahlili (Sotuvdagi)</b>\n"
+        f"├─ O'rtacha narx: <b>{price_stats.get('avg_price', 0):,.0f} $</b>\n"
+        f"├─ Eng qimmat: <b>{price_stats.get('max_price', 0):,.0f} $</b>\n"
+        f"└─ Eng arzon: <b>{price_stats.get('min_price', 0):,.0f} $</b>\n"
     )
     
     await callback.message.answer(summary_text, parse_mode="HTML")
     
-    # Send charts
-    if report['daily_sales']:
+    # 3. Send charts
+    if report.get('daily_sales'):
         try:
-            with open(report['daily_sales'], 'rb') as photo:
-                await callback.message.answer_photo(photo, caption="📈 Kunlik sotuvlar dinamikasi")
+            from aiogram.types import FSInputFile
+            photo = FSInputFile(report['daily_sales'])
+            await callback.message.answer_photo(photo, caption="📈 Kunlik sotuvlar dinamikasi")
         except Exception as e:
             logger.error(f"Error sending daily sales chart: {e}")
     
-    if report['top_models']:
+    if report.get('top_models'):
         try:
-            with open(report['top_models'], 'rb') as photo:
-                await callback.message.answer_photo(photo, caption="🏆 Top modellar")
+            from aiogram.types import FSInputFile
+            photo = FSInputFile(report['top_models'])
+            await callback.message.answer_photo(photo, caption="🏆 Top modellar")
         except Exception as e:
             logger.error(f"Error sending top models chart: {e}")
+            
+    # 4. Excel report button?
+    # For now just text
+
 
 
 @router.message(F.text == "📥 Murojaatlar")

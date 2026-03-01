@@ -407,10 +407,17 @@ async def process_phone(message: Message, state: FSMContext, bot: Bot):
     )
     
     async with async_session_maker() as session:
-        await update_user_phone(session, message.from_user.id, phone)
+        user_id = message.from_user.id
+        from database.crud import get_or_create_user
+        user = await get_or_create_user(
+            session, 
+            telegram_id=user_id,
+            username=message.from_user.username,
+            full_name=message.from_user.full_name
+        )
+        await update_user_phone(session, user_id, phone)
         
-        user = await get_user_by_id(session, message.from_user.id)
-        user_score = user.lead_score if user else 0
+        user_score = user.lead_score
         
         score, urgency = calculate_inquiry_lead_score(
             has_phone=True,

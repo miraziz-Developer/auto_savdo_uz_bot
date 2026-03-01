@@ -27,28 +27,35 @@ class AvtoelonScraper(BaseScraper):
         listings = []
         
         try:
-            for page_num in range(1, max_pages + 1):
+            # Randomize pages to scrape
+            pages_todo = min(max_pages, random.randint(1, 2))
+            
+            for page_num in range(1, pages_todo + 1):
                 url = f"{self.BASE_URL}?page={page_num}"
                 logger.info(f"Scraping Avtoelon page {page_num}: {url}")
                 
-                await self.goto_with_retry(url)
-                await self.page.wait_for_timeout(2000)
-                
-                # Get all listing cards
-                listing_elements = await self.page.query_selector_all('.list-item.a-elem')
-                logger.info(f"Found {len(listing_elements)} listings on page {page_num}")
-                
-                for element in listing_elements:
-                    try:
-                        listing_data = await self.parse_listing(element)
-                        if listing_data:
-                            listings.append(listing_data)
-                    except Exception as e:
-                        logger.error(f"Error parsing listing: {e}")
-                        continue
-                
-                # Random delay between pages
-                await self.page.wait_for_timeout(3000 + int(2000 * (0.5 - random.random())))
+                try:
+                    await self.goto_with_retry(url)
+                    
+                    # Get all listing cards
+                    listing_elements = await self.page.query_selector_all('.list-item.a-elem')
+                    logger.info(f"Found {len(listing_elements)} listings on page {page_num}")
+                    
+                    for element in listing_elements:
+                        try:
+                            listing_data = await self.parse_listing(element)
+                            if listing_data:
+                                listings.append(listing_data)
+                        except Exception as e:
+                            logger.error(f"Error parsing listing: {e}")
+                            continue
+                            
+                    # Random delay between pages
+                    await self.random_sleep(4, 7)
+                    
+                except Exception as e:
+                    logger.error(f"Error scraping page {url}: {e}")
+                    continue
         
         finally:
             await self.close_browser()
@@ -84,10 +91,15 @@ class AvtoelonScraper(BaseScraper):
             title = await title_element.inner_text() if title_element else ""
             
             # Get price
-            price_element = await element.query_selector('.price')
-            price_text = await price_element.inner_text() if price_element else "0"
-            
-            price = self.parse_price(price_text)
+            try:
+                price_element = await element.query_selector('.price')
+                price_text = await price_element.inner_text() if price_element else "0"
+                price = self.parse_price(price_text)
+            except Exception as e:
+                logger.error(f"❌ Failed to extract price: {e}")
+                from utils.notifications import notify_admin_about_error
+                await notify_admin_about_error(f"Avtoelon Price Scraping Failed for {url}: {e}")
+                price = 0
             
             # Get year
             year_element = await element.query_selector('.year')

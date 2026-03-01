@@ -23,6 +23,13 @@ async def toggle_favorite(callback: CallbackQuery):
     user_id = callback.from_user.id
     
     async with async_session_maker() as session:
+        from database.crud import get_or_create_user
+        await get_or_create_user(
+            session,
+            telegram_id=user_id,
+            username=callback.from_user.username,
+            full_name=callback.from_user.full_name
+        )
         if await is_favorite(session, user_id, car_id):
             await remove_from_favorites(session, user_id, car_id)
             await callback.answer("💔 Sevimlilardan o'chirildi", show_alert=False)

@@ -98,6 +98,30 @@ async def get_all_users(session: AsyncSession) -> List[User]:
     return result.scalars().all()
 
 
+async def get_users_count(session: AsyncSession) -> int:
+    """Get total user count"""
+    result = await session.execute(select(func.count(User.id)))
+    return result.scalar() or 0
+
+
+async def get_active_users_count(session: AsyncSession, days: int = 7) -> int:
+    """Get active users count (last N days)"""
+    since = datetime.utcnow() - timedelta(days=days)
+    result = await session.execute(
+        select(func.count(User.id)).where(User.last_activity >= since)
+    )
+    return result.scalar() or 0
+
+
+async def get_new_users_count(session: AsyncSession, days: int = 7) -> int:
+    """Get new users count (registered in last N days)"""
+    since = datetime.utcnow() - timedelta(days=days)
+    result = await session.execute(
+        select(func.count(User.id)).where(User.created_at >= since)
+    )
+    return result.scalar() or 0
+
+
 async def get_hot_leads(session: AsyncSession, min_score: int = 60, limit: int = 20) -> List[User]:
     """Get hot leads — yuqori ball olgan mijozlar"""
     result = await session.execute(
@@ -718,6 +742,54 @@ async def get_sold_cars_last_30_days(session: AsyncSession) -> List[SoldCar]:
         select(SoldCar).where(SoldCar.sold_at >= thirty_days_ago).order_by(SoldCar.sold_at.desc())
     )
     return list(result.scalars().all())
+
+
+async def get_top_sold_models(session: AsyncSession, limit: int = 10) -> List[dict]:
+    """Get top sold models by count and profit"""
+    stmt = (
+        select(
+            SoldCar.model,
+            func.count(SoldCar.id).label('count'),
+            func.sum(SoldCar.profit).label('total_profit')
+        )
+        .group_by(SoldCar.model)
+        .order_by(func.count(SoldCar.id).desc())
+        .limit(limit)
+    )
+    result = await session.execute(stmt)
+    return [
+        {'model': row.model, 'count': row.count, 'total_profit': row.total_profit or 0}
+        for row in result.all()
+    ]
+
+
+async def get_most_viewed_cars(session: AsyncSession, limit: int = 5) -> List[Car]:
+    """Get most viewed available cars"""
+    result = await session.execute(
+        select(Car)
+        .where(Car.is_available == True)
+        .order_by(Car.views_count.desc())
+        .limit(limit)
+    )
+    return list(result.scalars().all())
+
+
+async def get_price_stats(session: AsyncSession) -> dict:
+    """Get price statistics of available cars"""
+    result = await session.execute(
+        select(
+            func.avg(Car.price).label('avg_price'),
+            func.max(Car.price).label('max_price'),
+            func.min(Car.price).label('min_price')
+        ).where(Car.is_available == True)
+    )
+    row = result.one()
+    
+    return {
+        'avg_price': row.avg_price or 0,
+        'max_price': row.max_price or 0,
+        'min_price': row.min_price or 0
+    }
 
 
 # ====== SCRAPED LISTING CRUD ======

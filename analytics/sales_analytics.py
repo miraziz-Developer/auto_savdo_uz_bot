@@ -200,38 +200,108 @@ class SalesAnalytics:
             async with async_session_maker() as session:
                 sold_cars = await get_sold_cars_last_30_days(session)
             
+            # Additional Stats for "Savdo statistikasi" block
             if not sold_cars:
                 return {
                     'total_sales': 0,
                     'total_profit': 0,
                     'avg_profit': 0,
-                    'best_day': None
+                    'best_day': None,
+                    'best_model': 'N/A',
+                    'best_model_profit': 0
                 }
             
             df = pd.DataFrame([
-                {
-                    'date': car.sold_at.date(),
-                    'profit': car.profit,
-                }
-                for car in sold_cars
+                {'date': car.sold_at.date(), 'profit': c.profit, 'model': c.model}
+                for c in sold_cars
             ])
             
             total_sales = len(sold_cars)
             total_profit = df['profit'].sum()
             avg_profit = df['profit'].mean()
             
-            # Find best sales day
+            # Best day
             daily_sales = df.groupby('date').size()
             best_day = daily_sales.idxmax() if not daily_sales.empty else None
+            
+            # Best model by profit
+            model_profit = df.groupby('model')['profit'].sum()
+            best_model = model_profit.idxmax() if not model_profit.empty else 'N/A'
+            best_model_val = model_profit.max() if not model_profit.empty else 0
             
             return {
                 'total_sales': total_sales,
                 'total_profit': float(total_profit),
                 'avg_profit': float(avg_profit),
                 'best_day': str(best_day) if best_day else None,
-                'best_day_count': int(daily_sales.max()) if not daily_sales.empty else 0
+                'best_day_count': int(daily_sales.max()) if not daily_sales.empty else 0,
+                'best_model': best_model,
+                'best_model_profit': float(best_model_val)
             }
             
         except Exception as e:
             logger.error(f"Error getting summary stats: {e}")
             return {}
+
+    async def get_customer_stats(self) -> dict:
+        """
+        Get customer statistics (Total, Active, New)
+        """
+        from database.crud import get_users_count, get_active_users_count, get_new_users_count
+        async with async_session_maker() as session:
+            total = await get_users_count(session)
+            active = await get_active_users_count(session, days=7)
+            new = await get_new_users_count(session, days=7)
+            
+        return {'total': total, 'active': active, 'new': new}
+
+    async def get_popular_cars(self, limit: int = 3) -> List[dict]:
+        """
+        Get most viewed cars
+        """
+        from database.crud import get_most_viewed_cars
+        async with async_session_maker() as session:
+            cars = await get_most_viewed_cars(session, limit=limit)
+        
+        return [
+            {'brand': c.brand, 'model': c.model, 'views': c.views_count} 
+            for c in cars
+        ]
+
+    async def get_price_analysis(self) -> dict:
+        """
+        Price analysis of current inventory
+        """
+        from database.crud import get_price_stats
+        async with async_session_maker() as session:
+            stats = await get_price_stats(session)
+            
+        return stats # {avg, max, min, max_car_model, min_car_model}
+
+    async def generate_weekly_excel_report(self) -> str:
+        """
+        Generate comprehensive Excel report
+        """
+        filename = self.output_dir / f"weekly_report_{datetime.now().strftime('%Y%m%d')}.xlsx"
+        
+        async with async_session_maker() as session:
+            sold_cars = await get_sold_cars_last_30_days(session)
+            
+        # Create multiple dataframes for sheets
+        df_sales = pd.DataFrame([
+            {
+                'ID': c.id, 'Brand': c.brand, 'Model': c.model, 'Year': c.year,
+                'Buy Price': c.purchase_price, 'Sell Price': c.selling_price, 'Profit': c.profit,
+                'Date': c.sold_at
+            } for c in sold_cars
+        ])
+        
+        try:
+            with pd.ExcelWriter(filename, engine='openpyxl') as writer:
+                if not df_sales.empty:
+                    df_sales.to_excel(writer, sheet_name='Sales', index=False)
+                # Add more sheets if needed...
+            return str(filename)
+        except Exception as e:
+            logger.error(f"Excel export error: {e}")
+            return None

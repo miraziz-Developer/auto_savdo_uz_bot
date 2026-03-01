@@ -34,26 +34,32 @@ class OLXScraper(BaseScraper):
             random.shuffle(urls)
             
             for base_url in urls:
-                for page_num in range(1, max_pages + 1):
+                # Randomize number of pages to behave human-like (1-2 pages)
+                pages_to_scrape = min(max_pages, random.randint(1, 2))
+                
+                for page_num in range(1, pages_to_scrape + 1):
                     list_url = f"{base_url}?page={page_num}" if '?' not in base_url else f"{base_url}&page={page_num}"
                     logger.info(f"Scraping OLX List: {list_url}")
                     
                     try:
                         await self.goto_with_retry(list_url)
-                        await self.page.wait_for_timeout(2000)
                         
                         # Collect all URLs from the list page first
                         listing_urls = await self.get_card_urls()
                         logger.info(f"Found {len(listing_urls)} listings on {list_url}")
                         
                         # Visit each listing URL directly for better data
-                        for url in listing_urls:
+                        # Only take random subset per run to avoid heavy load
+                        random.shuffle(listing_urls)
+                        target_listings = listing_urls[:5] # Limit per page per run
+                        
+                        for url in target_listings:
                             try:
                                 data = await self.scrape_listing_details(url)
                                 if data:
                                     listings.append(data)
                                     # Short delay between listings
-                                    await self.page.wait_for_timeout(1000 + int(1000 * random.random()))
+                                    await self.random_sleep(3, 8)
                             except Exception as e:
                                 logger.error(f"Error scraping listing {url}: {e}")
                                 continue
@@ -61,6 +67,9 @@ class OLXScraper(BaseScraper):
                     except Exception as e:
                         logger.error(f"Error processing list page {list_url}: {e}")
                         continue
+                        
+                    # Delay between pages
+                    await self.random_sleep(5, 10)
         
         finally:
             await self.close_browser()
@@ -107,9 +116,15 @@ class OLXScraper(BaseScraper):
             title = await title_el.inner_text() if title_el else ""
             
             # Price
-            price_el = await self.page.query_selector('[data-testid="ad-price-container"] h3') 
-            price_text = await price_el.inner_text() if price_el else "0"
-            price = self.parse_price(price_text, current_rate)
+            try:
+                price_el = await self.page.query_selector('[data-testid="ad-price-container"] h3') 
+                price_text = await price_el.inner_text() if price_el else "0"
+                price = self.parse_price(price_text, current_rate)
+            except Exception as e:
+                logger.error(f"❌ Failed to extract price: {e}")
+                from utils.notifications import notify_admin_about_error
+                await notify_admin_about_error(f"OLX Price Scraping Failed for {url}: {e}")
+                price = 0
             
             # Location and Date (often in a specific span)
             location = "Toshkent" # Default

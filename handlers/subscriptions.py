@@ -65,7 +65,7 @@ async def new_subscription(callback: CallbackQuery, state: FSMContext):
 
 @router.message(SubscriptionStates.waiting_for_brand)
 async def process_sub_brand(message: Message, state: FSMContext):
-    """Brend qabul qilish"""
+    """Brend qabul qilish va narx so'rash (Rapid Flow)"""
     if message.text == "❌ Bekor qilish":
         await state.clear()
         await message.answer("❌ Bekor qilindi", reply_markup=main_menu_keyboard())
@@ -74,26 +74,31 @@ async def process_sub_brand(message: Message, state: FSMContext):
     brand = message.text.strip()
     await state.update_data(brand=brand)
     
+    # Rapid Flow: Brand -> Price (Skip Model/Year)
+    
     keyboard = ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="⏭ O'tkazib yuborish")],
+        [KeyboardButton(text="10,000 $"), KeyboardButton(text="15,000 $")],
+        [KeyboardButton(text="20,000 $"), KeyboardButton(text="30,000 $")],
+        [KeyboardButton(text="50,000 $"), KeyboardButton(text="⏭ Cheklovsiz")],
+        [KeyboardButton(text="⚙️ Aniqroq sozlash (Model/Yil)")],
         [KeyboardButton(text="❌ Bekor qilish")]
     ], resize_keyboard=True)
     
     await message.answer(
         f"✅ Brend: <b>{brand}</b>\n\n"
-        "🚙 <b>Model nomini kiriting:</b>\n"
-        "<i>Masalan: Gentra, Malibu, Camry</i>\n\n"
-        "Yoki ⏭ tugmasini bosib o'tkazib yuboring\n"
-        "(barcha modellar ko'rsatiladi)",
+        "💰 <b>Maksimal narxni tanlang:</b>\n"
+        "(yoki o'zingiz yozing, masalan: 12500)",
         reply_markup=keyboard,
         parse_mode="HTML"
     )
-    await state.set_state(SubscriptionStates.waiting_for_model)
+    await state.set_state(SubscriptionStates.waiting_for_price_to)
 
+
+# --- Detailed Flow Handlers (Model & Year) ---
 
 @router.message(SubscriptionStates.waiting_for_model)
 async def process_sub_model(message: Message, state: FSMContext):
-    """Model qabul qilish"""
+    """Model qabul qilish (Detailed Flow)"""
     if message.text == "❌ Bekor qilish":
         await state.clear()
         await message.answer("❌ Bekor qilindi", reply_markup=main_menu_keyboard())
@@ -103,25 +108,19 @@ async def process_sub_model(message: Message, state: FSMContext):
         await state.update_data(model=message.text.strip())
     
     keyboard = ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="2024"), KeyboardButton(text="2023"), KeyboardButton(text="2022")],
-        [KeyboardButton(text="2021"), KeyboardButton(text="2020"), KeyboardButton(text="2019")],
-        [KeyboardButton(text="2018"), KeyboardButton(text="2016"), KeyboardButton(text="2014")],
+        [KeyboardButton(text="2024"), KeyboardButton(text="2022"), KeyboardButton(text="2020")],
+        [KeyboardButton(text="2018"), KeyboardButton(text="2015"), KeyboardButton(text="2010")],
         [KeyboardButton(text="⏭ O'tkazib yuborish")],
         [KeyboardButton(text="❌ Bekor qilish")]
     ], resize_keyboard=True)
     
-    await message.answer(
-        "📅 <b>Minimal yilni tanlang:</b>\n\n"
-        "<i>Tanlangan yildan KEYINGI moshinalar ko'rsatiladi</i>",
-        reply_markup=keyboard,
-        parse_mode="HTML"
-    )
+    await message.answer("📅 <b>Minimal yilni tanlang:</b>", reply_markup=keyboard, parse_mode="HTML")
     await state.set_state(SubscriptionStates.waiting_for_year_from)
 
 
 @router.message(SubscriptionStates.waiting_for_year_from)
 async def process_sub_year_from(message: Message, state: FSMContext):
-    """Yil qabul qilish"""
+    """Yil qabul qilish (Detailed Flow)"""
     if message.text == "❌ Bekor qilish":
         await state.clear()
         await message.answer("❌ Bekor qilindi", reply_markup=main_menu_keyboard())
@@ -132,24 +131,19 @@ async def process_sub_year_from(message: Message, state: FSMContext):
             year = int(message.text.strip())
             await state.update_data(year_from=year)
         except ValueError:
-            await message.answer("❌ Iltimos, to'g'ri yil kiriting (masalan: 2020)")
+            await message.answer("❌ Yilni raqamda kiriting.")
             return
+
+    # Ask for price again (completing the circle)
     
     keyboard = ReplyKeyboardMarkup(keyboard=[
         [KeyboardButton(text="10,000 $"), KeyboardButton(text="15,000 $")],
         [KeyboardButton(text="20,000 $"), KeyboardButton(text="30,000 $")],
-        [KeyboardButton(text="50,000 $"), KeyboardButton(text="100,000 $")],
-        [KeyboardButton(text="⏭ O'tkazib yuborish")],
+        [KeyboardButton(text="50,000 $"), KeyboardButton(text="⏭ Cheklovsiz")],
         [KeyboardButton(text="❌ Bekor qilish")]
     ], resize_keyboard=True)
     
-    await message.answer(
-        "💰 <b>Maksimal narxni tanlang (dollarda):</b>\n\n"
-        "<i>Bu narxdan ARZON moshinalar ko'rsatiladi</i>\n\n"
-        "Yoki o'zingiz aniq summa yozing:",
-        reply_markup=keyboard,
-        parse_mode="HTML"
-    )
+    await message.answer("💰 <b>Maksimal narxni tanlang:</b>", reply_markup=keyboard, parse_mode="HTML")
     await state.set_state(SubscriptionStates.waiting_for_price_to)
 
 
@@ -160,36 +154,55 @@ async def process_sub_price_to(message: Message, state: FSMContext):
         await state.clear()
         await message.answer("❌ Bekor qilindi", reply_markup=main_menu_keyboard())
         return
+
+    # Check for "More Options" request
+    if message.text == "⚙️ Aniqroq sozlash (Model/Yil)":
+        # Switch to detailed flow -> Ask Model
+        keyboard = ReplyKeyboardMarkup(keyboard=[
+            [KeyboardButton(text="⏭ O'tkazib yuborish")],
+            [KeyboardButton(text="❌ Bekor qilish")]
+        ], resize_keyboard=True)
+        await message.answer(
+            "🚙 <b>Model nomini kiriting:</b>\n(masalan: Gentra)",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        await state.set_state(SubscriptionStates.waiting_for_model)
+        return
     
-    if message.text != "⏭ O'tkazib yuborish":
+    # Process Price
+    price = None
+    if message.text != "⏭ Cheklovsiz" and message.text != "⏭ O'tkazib yuborish":
         try:
             price_text = message.text.replace("$", "").replace(",", "").replace(" ", "").strip()
             price = float(price_text)
             await state.update_data(price_to=price)
         except ValueError:
-            await message.answer(
-                "❌ Narxni to'g'ri kiriting.\n"
-                "<i>Masalan: 15000</i>",
-                parse_mode="HTML"
-            )
+            await message.answer("❌ Narxni to'g'ri kiriting (raqamda).")
             return
+            
+    # Go straight to Confirmation
+    data = await state.get_data()
+    # Ensure optional fields are None if skipped in rapid flow
+    if 'model' not in data: await state.update_data(model=None)
+    if 'year_from' not in data: await state.update_data(year_from=None)
     
-    # Confirmation
+    # Re-fetch data
     data = await state.get_data()
     
     text = "📋 <b>OBUNA TASDIQLASH</b>\n"
     text += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
     
-    if data.get('brand'):
-        text += f"🏷 Brend: <b>{data['brand']}</b>\n"
-    if data.get('model'):
-        text += f"🚙 Model: <b>{data['model']}</b>\n"
-    if data.get('year_from'):
-        text += f"📅 Yil: <b>{data['year_from']}+</b>\n"
-    if data.get('price_to'):
-        text += f"💰 Maks. narx: <b>{data['price_to']:,.0f} $</b>\n"
+    text += f"🏷 Brend: <b>{data.get('brand')}</b>\n"
+    if data.get('model'): text += f"🚙 Model: <b>{data['model']}</b>\n"
+    if data.get('year_from'): text += f"📅 Yil: <b>{data['year_from']}+</b>\n"
     
-    text += "\n✅ Shu parametrlar bo'yicha obuna yaratilasinmi?"
+    if data.get('price_to'):
+        text += f"💰 Narx: <b>{data['price_to']:,.0f} $</b> gacha\n"
+    else:
+        text += f"💰 Narx: <b>Cheklovsiz</b>\n"
+    
+    text += "\n✅ Shu parametrlarga mos yangi e'lon chiqqanda xabar beramiz!"
     
     await message.answer(
         text,
@@ -205,6 +218,13 @@ async def confirm_subscription(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     
     async with async_session_maker() as session:
+        from database.crud import get_or_create_user
+        await get_or_create_user(
+            session,
+            telegram_id=callback.from_user.id,
+            username=callback.from_user.username,
+            full_name=callback.from_user.full_name
+        )
         subscription = await create_subscription(
             session,
             user_id=callback.from_user.id,

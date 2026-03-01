@@ -87,6 +87,13 @@ async def process_comment(message: Message, state: FSMContext):
     comment = None if message.text == "/skip" else message.text
     
     async with async_session_maker() as session:
+        from database.crud import get_or_create_user
+        await get_or_create_user(
+            session,
+            telegram_id=message.from_user.id,
+            username=message.from_user.username,
+            full_name=message.from_user.full_name
+        )
         await create_review(
             session,
             user_id=message.from_user.id,
