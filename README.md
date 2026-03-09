@@ -251,7 +251,3 @@ This is a custom project. For improvements:
 
 Private project - All rights reserved
 
-## Support
-
-📞 Contact: @your_username
-📧 Email: info@avtosavdo.uz
