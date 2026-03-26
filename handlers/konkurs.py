@@ -16,8 +16,8 @@ from config import settings
 router = Router()
 
 # Konkurs kanallari (Agar .env da yo'q bo'lsa, tahrirlashingiz mumkin)
-KONKURS_CHANNEL_USERNAME = settings.telegram_channel_id or "@avtosavdo_uz_cars"
-KONKURS_CHANNEL_LINK = "https://t.me/avtosavdo_uz_cars"
+KONKURS_CHANNEL_USERNAME = "@REAL_AVTO_ARZON"
+KONKURS_CHANNEL_LINK = "https://t.me/REAL_AVTO_ARZON"
 INSTAGRAM_LINK = "https://instagram.com/avtosavdo_uz"
 
 
