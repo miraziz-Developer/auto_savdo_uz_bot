@@ -96,7 +96,7 @@ class ScraperManager:
                             # Add drop info
                             listing['avg_price'] = avg_price
                             # Is it good deal NOW?
-                            listing['is_good_deal'] = (avg_price > 0 and listing['price'] < avg_price * 0.85)
+                            listing['is_good_deal'] = (avg_price > 0 and listing.get('price', 0) > 0 and listing['price'] < avg_price * 0.85)
                             
                             # Price drop specifics
                             listing['is_price_drop'] = True
@@ -105,6 +105,9 @@ class ScraperManager:
                             
                             # Notify
                             await publish_scraped_deal(listing)
+                            
+                            import asyncio
+                            await asyncio.sleep(3.5)
                             
                         continue
                     
@@ -126,7 +129,7 @@ class ScraperManager:
                         
                         if avg_price > 0 and listing.get('price', 0) > 0:
                             # If price is 15% cheaper than market average
-                            if listing['price'] < (avg_price * 0.85):
+                            if listing.get('price') < (avg_price * 0.85):
                                 is_good_deal = True
                                 logger.info(f"🔥 Good deal found: {listing['title']} (${listing['price']} vs avg ${avg_price:.0f})")
                     
@@ -200,11 +203,15 @@ class ScraperManager:
                     
                     # 1. Tashkent & Nearby: Notify all (high priority area)
                     # 2. Other regions: Notify ONLY if it's a Good Deal (worth traveling)
+                    import asyncio
+                    
                     if is_nearby or is_good_deal:
                         await publish_scraped_deal(listing)
+                        await asyncio.sleep(3.5)  # Telegram API limit (approx 1 msg. per 3 secs for channels)
                     
                     if is_good_deal:
                         await notify_admin_about_good_deal(listing)
+                        await asyncio.sleep(1.5)  # Telegram API limit
                     
                     new_count += 1
                     

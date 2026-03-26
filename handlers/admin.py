@@ -35,6 +35,86 @@ async def check_admin(user_id: int) -> bool:
         return await is_admin(session, user_id)
 
 
+@router.message(F.text == "📊 Admin Dashboard")
+async def admin_dashboard(message: Message):
+    """Admin dashboard with key statistics"""
+    try:
+        if not await check_admin(message.from_user.id):
+            await message.answer("❌ Sizda ushbu buyruqqa ruxsat yo'q")
+            return
+        
+        # Show loading
+        loading_msg = await message.answer("🔄 Dashboard yuklanmoqda...")
+        
+        async with async_session_maker() as session:
+            from database.crud import get_cars, get_pending_inquiries, get_user_buy_requests
+            from database.models import User, BuyRequest
+            
+            # Get key statistics with error handling
+            try:
+                total_cars = len(await get_cars(session, limit=1000))
+                pending_inquiries = len(await get_pending_inquiries(session))
+                buy_requests = len(await get_user_buy_requests(session, 0))  # All requests
+                
+                # Get users count
+                from sqlalchemy import select, func
+                users_result = await session.execute(select(func.count(User.id)))
+                total_users = users_result.scalar()
+                
+                # Get today's activity
+                from datetime import datetime, timedelta
+                today = datetime.utcnow().date()
+                today_cars_result = await session.execute(
+                    select(func.count(Car.id)).where(Car.created_at >= today)
+                )
+                today_cars = today_cars_result.scalar()
+                
+            except Exception as e:
+                logger.error(f"Error fetching dashboard stats: {e}")
+                total_cars = pending_inquiries = buy_requests = 0
+                total_users = today_cars = 0
+        
+        # Delete loading message
+        await loading_msg.delete()
+        
+        # Build dashboard keyboard
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(text="📋 Moshinalar", callback_data="admin:cars"),
+            InlineKeyboardButton(text="📞 Arizalar", callback_data="admin:inquiries")
+        )
+        builder.row(
+            InlineKeyboardButton(text="🛒 Sotib olish arizalari", callback_data="admin:buy_requests"),
+            InlineKeyboardButton(text="📈 Statistika", callback_data="admin:stats")
+        )
+        builder.row(
+            InlineKeyboardButton(text="➕ Moshina qo'shish", callback_data="add_car:manual"),
+            InlineKeyboardButton(text="📢 E'lon yuborish", callback_data="admin:broadcast")
+        )
+        builder.row(InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="main_menu"))
+        
+        text = (
+            f"📊 <b>ADMIN DASHBOARD</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"👥 <b>Foydalanuvchilar:</b> {total_users} ta\n"
+            f"🚗 <b>Jami moshinalar:</b> {total_cars} ta\n"
+            f"📞 <b>Kutilayotgan arizalar:</b> {pending_inquiries} ta\n"
+            f"🛒 <b>Sotib olish arizalari:</b> {buy_requests} ta\n"
+            f"📅 <b>Bugungi moshinalar:</b> {today_cars} ta\n\n"
+            f"⚡ <b>Tezkor amallar:</b>"
+        )
+        
+        await message.answer(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+        logger.info(f"Admin {message.from_user.id} viewed dashboard")
+        
+    except Exception as e:
+        logger.error(f"Error in admin_dashboard: {e}")
+        await message.answer(
+            "❌ Dashboardni yuklashda xatolik yuz berdi.",
+            reply_markup=admin_main_menu_keyboard()
+        )
+
+
 @router.message(F.text == "➕ Moshina qo'shish (ADMIN)")
 async def start_add_car_menu(message: Message):
     """Start adding new car - Menu"""
@@ -580,6 +660,223 @@ async def cancel_conversion(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text("❌ Bekor qilindi")
 
 
+@router.callback_query(F.data.startswith("car_action:"))
+async def car_quick_action(callback: CallbackQuery):
+    """Quick actions for cars (approve/reject)"""
+    parts = callback.data.split(":")
+    action = parts[1]
+    car_id = int(parts[2])
+    
+    if not await check_admin(callback.from_user.id):
+        await callback.answer("❌ Ruxsat yo'q", show_alert=True)
+        return
+    
+    async with async_session_maker() as session:
+        car = await get_car_by_id(session, car_id)
+        if not car:
+            await callback.answer("❌ Moshina topilmadi", show_alert=True)
+            return
+        
+        if action == "approve":
+            # Mark as available/published
+            await update_car(session, car_id, is_available=True)
+            await callback.answer(f"✅ {car.brand} {car.model} tasdiqlandi", show_alert=True)
+            
+        elif action == "reject":
+            # Mark as unavailable
+            await update_car(session, car_id, is_available=False)
+            await callback.answer(f"❌ {car.brand} {car.model} rad etildi", show_alert=True)
+            
+        elif action == "feature":
+            # Mark as featured
+            await update_car(session, car_id, is_featured=True)
+            await callback.answer(f"⭐ {car.brand} {car.model} asosiyga qo'shildi", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("admin:"))
+async def admin_callback_handler(callback: CallbackQuery):
+    """Admin dashboard callbacks"""
+    action = callback.data.split(":")[1]
+    
+    if action == "cars":
+        await list_cars_admin(callback.message)
+    elif action == "inquiries":
+        # Show pending inquiries
+        async with async_session_maker() as session:
+            inquiries = await get_pending_inquiries(session)
+        
+        if not inquiries:
+            await callback.answer("📞 Kutilayotgan arizalar yo'q", show_alert=True)
+            return
+        
+        text = f"📞 <b>KUTILAYOTGAN ARIZALAR ({len(inquiries)} ta)</b>\n\n"
+        for i, inquiry in enumerate(inquiries[:5], 1):
+            text += f"{i}. {inquiry.brand} {inquiry.model} - {inquiry.price:,.0f} $\n"
+        
+        await callback.message.answer(text, parse_mode="HTML")
+        
+    elif action == "buy_requests":
+        # Show buy requests
+        async with async_session_maker() as session:
+            from database.crud import get_user_buy_requests
+            requests = await get_user_buy_requests(session, 0)  # All requests
+        
+        if not requests:
+            await callback.answer("🛒 Sotib olish arizalari yo'q", show_alert=True)
+            return
+        
+        text = f"🛒 <b>SOTIB OLISH ARIZALARI ({len(requests)} ta)</b>\n\n"
+        for i, req in enumerate(requests[:5], 1):
+            text += f"{i}. {req.brand} {req.model} - {req.budget_min:,.0f}-${req.budget_max:,.0f}\n"
+        
+        await callback.message.answer(text, parse_mode="HTML")
+        
+    elif action == "stats":
+        await show_advanced_analytics(callback.message)
+    
+    await callback.answer()
+
+
+async def show_advanced_analytics(message: Message):
+    """Show advanced analytics dashboard"""
+    try:
+        # Show loading
+        loading_msg = await message.answer("📊 Analiz yuklanmoqda...")
+        
+        async with async_session_maker() as session:
+            from database.crud import get_cars, get_pending_inquiries, get_user_buy_requests
+            from database.models import User, BuyRequest, Car
+            from sqlalchemy import select, func, and_, or_
+            from datetime import datetime, timedelta
+            
+            # Basic stats
+            total_cars = len(await get_cars(session, limit=1000))
+            pending_inquiries = len(await get_pending_inquiries(session))
+            buy_requests = len(await get_user_buy_requests(session, 0))
+            
+            # User stats
+            users_result = await session.execute(select(func.count(User.id)))
+            total_users = users_result.scalar()
+            
+            # Today's stats
+            today = datetime.utcnow().date()
+            today_cars_result = await session.execute(
+                select(func.count(Car.id)).where(Car.created_at >= today)
+            )
+            today_cars = today_cars_result.scalar()
+            
+            # This week stats
+            week_ago = today - timedelta(days=7)
+            week_cars_result = await session.execute(
+                select(func.count(Car.id)).where(Car.created_at >= week_ago)
+            )
+            week_cars = week_cars_result.scalar()
+            
+            # Price distribution
+            price_ranges = [
+                ("0-5k", 0, 5000),
+                ("5k-10k", 5000, 10000),
+                ("10k-15k", 10000, 15000),
+                ("15k-20k", 15000, 20000),
+                ("20k+", 20000, 1000000)
+            ]
+            
+            price_dist_text = "💰 <b>NARX TARQALISHI</b>\n"
+            for label, min_price, max_price in price_ranges:
+                count_result = await session.execute(
+                    select(func.count(Car.id)).where(
+                        and_(Car.price >= min_price, Car.price < max_price)
+                    )
+                )
+                count = count_result.scalar()
+                percentage = (count / total_cars * 100) if total_cars > 0 else 0
+                price_dist_text += f"{label}: {count} ta ({percentage:.1f}%)\n"
+            
+            # Brand distribution
+            brand_result = await session.execute(
+                select(Car.brand, func.count(Car.id))
+                .group_by(Car.brand)
+                .order_by(func.count(Car.id).desc())
+                .limit(5)
+            )
+            top_brands = brand_result.fetchall()
+            
+            brand_dist_text = "\n🏷 <b>TOP 5 BRENDLAR</b>\n"
+            for brand, count in top_brands:
+                percentage = (count / total_cars * 100) if total_cars > 0 else 0
+                brand_dist_text += f"{brand}: {count} ta ({percentage:.1f}%)\n"
+            
+            # Year distribution
+            year_result = await session.execute(
+                select(Car.year, func.count(Car.id))
+                .group_by(Car.year)
+                .order_by(func.count(Car.id).desc())
+                .limit(5)
+            )
+            top_years = year_result.fetchall()
+            
+            year_dist_text = "\n📅 <b>TOP 5 YILLAR</b>\n"
+            for year, count in top_years:
+                percentage = (count / total_cars * 100) if total_cars > 0 else 0
+                year_dist_text += f"{year}: {count} ta ({percentage:.1f}%)\n"
+            
+            # Activity trends
+            last_7_days = []
+            for i in range(7):
+                date = today - timedelta(days=i)
+                day_result = await session.execute(
+                    select(func.count(Car.id)).where(
+                        func.date(Car.created_at) == date
+                    )
+                )
+                count = day_result.scalar()
+                last_7_days.append((date.strftime("%d-%m"), count))
+            
+            trends_text = "\n📈 <b>7 KUNLIK TRENDS</b>\n"
+            for date, count in reversed(last_7_days):
+                trends_text += f"{date}: {count} ta\n"
+        
+        await loading_msg.delete()
+        
+        # Build comprehensive analytics report
+        text = "📊 <b>ADVANCED ANALYTICS DASHBOARD</b>\n"
+        text += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        
+        # Overview
+        text += "📋 <b>UMUMIY KO'RSATGICHLAR</b>\n"
+        text += f"👥 Foydalanuvchilar: {total_users} ta\n"
+        text += f"🚗 Jami moshinalar: {total_cars} ta\n"
+        text += f"📞 Kutilayotgan arizalar: {pending_inquiries} ta\n"
+        text += f"🛒 Sotib olish arizalari: {buy_requests} ta\n"
+        text += f"📅 Bugungi moshinalar: {today_cars} ta\n"
+        text += f"📊 Haftalik moshinalar: {week_cars} ta\n\n"
+        
+        text += price_dist_text
+        text += brand_dist_text
+        text += year_dist_text
+        text += trends_text
+        
+        text += "\n⚠️ Ma'lumotlar real vaqtda yangilanadi"
+        
+        # Action buttons
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(text="📥 Excel yuklash", callback_data="analytics:export"),
+            InlineKeyboardButton(text="🔄 Yangilash", callback_data="admin:stats")
+        )
+        builder.row(InlineKeyboardButton(text="◀️ Orqaga", callback_data="admin:dashboard"))
+        
+        await message.answer(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+        logger.info(f"Advanced analytics viewed by admin {message.from_user.id}")
+        
+    except Exception as e:
+        logger.error(f"Error in show_advanced_analytics: {e}")
+        await message.answer(
+            "❌ Analiz ma'lumotlarini yuklashda xatolik yuz berdi.",
+            reply_markup=admin_main_menu_keyboard()
+        )
+
+
 @router.message(F.text == "📋 Admin: Moshinalar")
 async def list_cars_admin(message: Message):
     """List all cars for admin"""
@@ -600,11 +897,28 @@ async def list_cars_admin(message: Message):
     
     text = "🚗 <b>MOSHINALAR RO'YXATI</b>\n"
     text += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-    await message.answer(text, parse_mode="HTML")
     
-    # Also show detail for individual management (example with first car)
-    if cars:
-        await show_admin_car_details(message, cars[0].id)
+    for i, car in enumerate(cars[:5], 1):  # Show first 5 with quick actions
+        status = "✅" if car.is_available else "❌"
+        featured = "⭐" if getattr(car, 'is_featured', False) else ""
+        car_text = f"{status} {featured} {i}. {car.brand} {car.model} - {car.price:,.0f} $\n"
+        car_text += f"   📅 {car.year} | 🛣 {car.mileage or 0:,} km\n"
+        
+        # Quick action buttons
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"car_action:approve:{car.id}"),
+            InlineKeyboardButton(text="❌ Rad etish", callback_data=f"car_action:reject:{car.id}")
+        )
+        builder.row(
+            InlineKeyboardButton(text="⭐ Asosiy qilish", callback_data=f"car_action:feature:{car.id}"),
+            InlineKeyboardButton(text="📝 Tahrirlash", callback_data=f"edit_car:{car.id}")
+        )
+        
+        await message.answer(car_text, reply_markup=builder.as_markup(), parse_mode="HTML")
+    
+    if len(cars) > 5:
+        await message.answer(f"...va yana {len(cars) - 5} ta mashina", parse_mode="HTML")
 
 async def show_admin_car_details(message: Message, car_id: int):
     async with async_session_maker() as session:

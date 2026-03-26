@@ -2,12 +2,6 @@ aiogram>=3.0.0
 sqlalchemy>=2.0.0
 asyncpg
 psycopg2-binary
-redis
-celery
-beautifulsoup4
-lxml
-playwright
-playwright-stealth
 loguru
 python-dotenv
 aiohttp
@@ -16,7 +10,8 @@ pydantic-settings
 apscheduler
 pandas
 matplotlib
-boto3
-minio
 sentry-sdk
-flower
+alembic
+playwright
+playwright-stealth
+

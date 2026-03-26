@@ -112,13 +112,23 @@ class OLXScraper(BaseScraper):
                     external_id = match.group(1)
             
             # Title
-            title_el = await self.page.query_selector('h1')
+            title_el = await self.page.query_selector('h1, h4, [data-cy="ad_title"]')
             title = await title_el.inner_text() if title_el else ""
             
             # Price
             try:
-                price_el = await self.page.query_selector('[data-testid="ad-price-container"] h3') 
-                price_text = await price_el.inner_text() if price_el else "0"
+                price_el = await self.page.query_selector('[data-testid="ad-price-container"] h3, [data-testid="ad-price-container"] h2, h3[class*="css-"], h2[class*="css-"]') 
+                price_text = await price_el.inner_text() if price_el else ""
+                
+                if not price_text:
+                    # Backup: search the page for anything that looks like price
+                    all_h3s = await self.page.query_selector_all('h2, h3')
+                    for h3 in all_h3s:
+                        text = await h3.inner_text()
+                        if 'y.e.' in text.lower() or '$' in text or "so'm" in text.lower() or 'sum' in text.lower():
+                            price_text = text
+                            break
+                            
                 price = self.parse_price(price_text, current_rate)
             except Exception as e:
                 logger.error(f"❌ Failed to extract price: {e}")

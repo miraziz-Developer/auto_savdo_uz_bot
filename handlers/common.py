@@ -12,13 +12,13 @@ from loguru import logger
 from config import settings
 from database.database import async_session_maker
 from database.crud import get_or_create_user, is_admin
-from keyboards.user_keyboards import main_menu_keyboard
+from keyboards.user_keyboards import main_menu_keyboard, buy_menu_keyboard
 from keyboards.admin_keyboards import admin_main_menu_keyboard
 
 router = Router()
 
 
-@router.message(CommandStart())
+@router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
     """Start command — Botga kirish"""
     await state.clear()
@@ -69,8 +69,8 @@ async def cmd_start(message: Message, state: FSMContext):
             f"Biz sizga eng yaxshi moshinani topishda\n"
             f"va moshinangizni tez sotishda yordam beramiz!\n\n"
             f"📌 <b>Asosiy imkoniyatlar:</b>\n\n"
-            f"🛒 <b>Moshina olish</b> — nimani xohlayotganingizni ayting,\n"
-            f"     biz sizga eng yaxshi variantlarni topamiz\n\n"
+            f"🚗 <b>Moshina sotib olish</b> — katalog, qidiruv va\n"
+            f"     zakazga moshina topish xizmati\n\n"
             f"➕ <b>E'lon berish</b> — moshinangizni bozorga chiqaring\n\n"
             f"🔍 <b>Qidiruv</b> — barcha moshinalar katalogi\n\n"
             f"📊 <b>Narxni baholash</b> — bozor narxini real-time tekshiring\n\n"
@@ -91,10 +91,12 @@ async def cmd_help(message: Message):
         "ℹ️ <b>YORDAM — Bot imkoniyatlari</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n\n"
         
-        "🛒 <b>Moshina olish</b>\n"
-        "Qaysi moshinani xohlaysiz? Brendini, modelini,\n"
-        "budjetini kiriting — mutaxassislarimiz sizga\n"
-        "eng mos variantlarni tanlashda yordam beradi.\n\n"
+        "🚗 <b>Moshina sotib olish</b>\n"
+        "Bu bo'limda siz moshinalarni o'zingiz qidirishingiz\n"
+        "yoki bizga ariza qoldirishingiz mumkin:\n"
+        "• <b>Katalog</b> — hamma moshinalarni ko'rish\n"
+        "• <b>Qidiruv</b> — filtrlar orqali topish\n"
+        "• <b>Ariza qoldirish</b> — mutaxassisga topshirish\n\n"
         
         "➕ <b>E'lon berish</b>\n"
         "Moshinangizni sotishga qo'ying. Rasmlar bilan\n"
@@ -145,6 +147,27 @@ async def switch_to_user_mode(message: Message):
         reply_markup=main_menu_keyboard(),
         parse_mode="HTML"
     )
+
+
+@router.message(F.text == "🚗 Moshina sotib olish")
+async def buy_menu_handler(message: Message):
+    """Moshina sotib olish quyi menyusi"""
+    request_text = (
+        "🚗 <b>MOSHINA SOTIB OLISH</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Qanday usulda moshina qidiramiz?\n\n"
+        "1️⃣ <b>Katalog</b> — barcha mavjud moshinalarni ko'rib chiqish\n"
+        "2️⃣ <b>Qidiruv</b> — brend, narx va yil bo'yicha filtrlash\n"
+        "3️⃣ <b>Ariza qoldirish</b> — siz xohlagan moshinani biz topib beramiz\n"
+        "   (Zakazga moshina topish xizmati)"
+    )
+    await message.answer(request_text, reply_markup=buy_menu_keyboard(), parse_mode="HTML")
+
+
+@router.message(F.text == "◀️ Ortga")
+async def back_to_main_menu_msg(message: Message):
+    """Bosh menyuga qaytish (matnli tugma orqali)"""
+    await message.answer("🏠 <b>Bosh menyu</b>", reply_markup=main_menu_keyboard(), parse_mode="HTML")
 
 
 @router.callback_query(F.data == "main_menu")

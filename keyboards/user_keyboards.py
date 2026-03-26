@@ -10,18 +10,30 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 
 
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
-    """Asosiy menyu — foydalanuvchi uchun"""
+    """Asosiy menyu — optimallashgan v3"""
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="🛒 Moshina olish"), KeyboardButton(text="➕ E'lon berish")],
-            [KeyboardButton(text="🔍 Qidiruv"), KeyboardButton(text="🚗 Katalog")],
-            [KeyboardButton(text="📊 Narxni baholash"), KeyboardButton(text="📉 Arzon variantlar")],
-            [KeyboardButton(text="🔔 Obunalar"), KeyboardButton(text="❤️ Sevimlilar")],
-            [KeyboardButton(text="📋 Mening arizalarim")],
-            [KeyboardButton(text="ℹ️ Yordam")],
+            [KeyboardButton(text="🚗 Moshina sotib olish"), KeyboardButton(text="➕ E'lon berish")],
+            [KeyboardButton(text="💰 Narxni baholash"), KeyboardButton(text="🔍 Arzon variantlar")],
+            [KeyboardButton(text="📊 Obunalar"), KeyboardButton(text="❤️ Sevimlilar")],
+            [KeyboardButton(text="📋 Mening arizalarim"), KeyboardButton(text="ℹ️ Yordam")],
         ],
         resize_keyboard=True,
         input_field_placeholder="Quyidagi tugmalardan tanlang..."
+    )
+    return keyboard
+
+
+def buy_menu_keyboard() -> ReplyKeyboardMarkup:
+    """Moshina sotib olish quyi menyusi"""
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="🚗 Katalog"), KeyboardButton(text="🔍 Qidiruv (Filtrlar)")],
+            [KeyboardButton(text="📝 Ariza qoldirish (Zakazga topish)")],
+            [KeyboardButton(text="◀️ Orqaga")],
+        ],
+        resize_keyboard=True,
+        input_field_placeholder="Qanday qidiramiz?"
     )
     return keyboard
 
@@ -152,3 +164,18 @@ def buy_request_keyboard(request_id: int) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="❌ Bekor qilish", callback_data=f"buyreq:cancel:{request_id}")
         ]
     ])
+
+
+def brands_keyboard() -> ReplyKeyboardMarkup:
+    """Ommabop brendlar klaviaturasi"""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="Chevrolet"), KeyboardButton(text="Hyundai")],
+            [KeyboardButton(text="Kia"), KeyboardButton(text="BYD")],
+            [KeyboardButton(text="Toyota"), KeyboardButton(text="Lada")],
+            [KeyboardButton(text="◀️ Orqaga")]
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+

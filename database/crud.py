@@ -38,23 +38,30 @@ async def get_or_create_user(session: AsyncSession, telegram_id: int, username: 
         session.add(user)
         await session.commit()
         await session.refresh(user)
-        logger.info(f"New user created: {telegram_id} (Admin: {should_be_admin})")
+        logger.info(f"New user: {telegram_id} (Admin: {should_be_admin})")
     else:
+        changed = False
         now = datetime.utcnow()
+
         if not user.last_activity or (now - user.last_activity).total_seconds() > 60:
             user.last_activity = now
-            
+            changed = True
+
         if user.is_admin != should_be_admin:
             user.is_admin = should_be_admin
-            logger.info(f"User {telegram_id} admin status updated to: {should_be_admin}")
-            
+            changed = True
+
         if username and user.username != username:
             user.username = username
+            changed = True
+
         if full_name and user.full_name != full_name:
             user.full_name = full_name
-            
-        await session.commit()
-    
+            changed = True
+
+        if changed:
+            await session.commit()
+
     return user
 
 
@@ -178,45 +185,47 @@ async def create_car(session: AsyncSession, **kwargs) -> Car:
     session.add(car)
     await session.commit()
     await session.refresh(car)
-    logger.info(f"New car created: {car.brand} {car.model} ({car.year})")
+    logger.info(f"New car: {car.brand} {car.model} ({car.year}) — {car.price}$")
+    return car
 
 async def find_interested_users(session: AsyncSession, brand: str, model: str, year: int, price: float) -> List[int]:
-    """Find users interested in these parameters (Subscriptions & Buy Requests)"""
-    from sqlalchemy import or_
+    """Find users interested in these parameters (Subscriptions & Buy Requests)
+    Optimized: single UNION query instead of 2 round-trips
+    """
+    from sqlalchemy import union, literal_column
 
     if not brand or not model:
         return []
 
-    # 1. Matching Subscriptions
-    sub_query = select(Subscription.user_id).where(
+    brand_l = brand.lower()
+    model_l = model.lower()
+
+    # Subscriptions query
+    sub_q = select(Subscription.user_id).where(
         Subscription.is_active == True,
-        # Brand match
-        or_(Subscription.brand == None, Subscription.brand == "", func.lower(Subscription.brand) == brand.lower()),
-        # Model match
-        or_(Subscription.model == None, Subscription.model == "", func.lower(Subscription.model) == model.lower()),
-        # Year range
-        or_(Subscription.year_from == None, Subscription.year_from <= year),
-        or_(Subscription.year_to == None, Subscription.year_to >= year),
-        # Price range
-        or_(Subscription.price_from == None, Subscription.price_from <= price),
-        or_(Subscription.price_to == None, Subscription.price_to >= price)
+        or_(Subscription.brand.is_(None), Subscription.brand == "", func.lower(Subscription.brand) == brand_l),
+        or_(Subscription.model.is_(None), Subscription.model == "", func.lower(Subscription.model) == model_l),
+        or_(Subscription.year_from.is_(None), Subscription.year_from <= year),
+        or_(Subscription.year_to.is_(None),   Subscription.year_to >= year),
+        or_(Subscription.price_from.is_(None), Subscription.price_from <= price),
+        or_(Subscription.price_to.is_(None),   Subscription.price_to >= price),
     )
-    
-    # 2. Matching Buy Requests
-    req_query = select(BuyRequest.user_id).where(
+
+    # Buy Requests query
+    req_q = select(BuyRequest.user_id).where(
         BuyRequest.status.in_(['pending', 'searching', 'found_options']),
-        or_(BuyRequest.brand == None, BuyRequest.brand == "", func.lower(BuyRequest.brand) == brand.lower()),
-        or_(BuyRequest.model == None, BuyRequest.model == "", func.lower(BuyRequest.model) == model.lower()),
-        or_(BuyRequest.year_from == None, BuyRequest.year_from <= year),
-        or_(BuyRequest.year_to == None, BuyRequest.year_to >= year),
-        or_(BuyRequest.budget_min == None, BuyRequest.budget_min * 0.9 <= price),
-        or_(BuyRequest.budget_max == None, BuyRequest.budget_max * 1.1 >= price)
+        or_(BuyRequest.brand.is_(None), BuyRequest.brand == "", func.lower(BuyRequest.brand) == brand_l),
+        or_(BuyRequest.model.is_(None), BuyRequest.model == "", func.lower(BuyRequest.model) == model_l),
+        or_(BuyRequest.year_from.is_(None), BuyRequest.year_from <= year),
+        or_(BuyRequest.year_to.is_(None),   BuyRequest.year_to >= year),
+        or_(BuyRequest.budget_min.is_(None), BuyRequest.budget_min * 0.9 <= price),
+        or_(BuyRequest.budget_max.is_(None), BuyRequest.budget_max * 1.1 >= price),
     )
-    
-    subs = await session.execute(sub_query)
-    reqs = await session.execute(req_query)
-    
-    return list(set(subs.scalars().all()) | set(reqs.scalars().all()))
+
+    # Single DB roundtrip with UNION
+    union_q = union(sub_q, req_q)
+    result = await session.execute(union_q)
+    return list(result.scalars().all())
 
 
 async def get_matching_users_for_car(session: AsyncSession, car: Car) -> List[int]:

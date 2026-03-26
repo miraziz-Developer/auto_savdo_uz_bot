@@ -17,7 +17,7 @@ from database.database import async_session_maker
 from database.crud import (
     create_buy_request, get_or_create_user, get_user_by_id, update_user_lead_data,
     find_matching_cars_for_request, schedule_followups_for_buy_request,
-    get_buy_request_by_id, get_user_buy_requests
+    get_buy_request_by_id, get_user_buy_requests, update_buy_request_status
 )
 from utils.lead_scoring import (
     calculate_inquiry_lead_score, calculate_user_lead_score,
@@ -49,7 +49,7 @@ FUEL_TYPES = ["Benzin", "Gas (Metan)", "Gas (Propan)", "Dizel", "Gibrid", "Hamma
 COLORS = ["Oq", "Qora", "Kumush/Kulrang", "Ko'k", "Qizil", "Boshqa", "Farqi yo'q"]
 
 
-@router.message(F.text.in_(["🛒 Moshina olish", "🛒 Sotib olish"]))
+@router.message(F.text.in_(["🛒 Moshina olish", "🛒 Sotib olish", "📝 Ariza qoldirish (Zakazga topish)"]))
 async def start_buy_request(message: Message, state: FSMContext):
     """Start buy request flow"""
     await state.clear()

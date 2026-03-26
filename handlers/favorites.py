@@ -30,15 +30,37 @@ async def toggle_favorite(callback: CallbackQuery):
             username=callback.from_user.username,
             full_name=callback.from_user.full_name
         )
-        if await is_favorite(session, user_id, car_id):
+        is_fav = await is_favorite(session, user_id, car_id)
+        
+        if is_fav:
             await remove_from_favorites(session, user_id, car_id)
-            await callback.answer("💔 Sevimlilardan o'chirildi", show_alert=False)
+            current_fav = False
+            msg = "💔 Sevimlilardan o'chirildi"
         else:
             added = await add_to_favorites(session, user_id, car_id)
-            if added:
-                await callback.answer("❤️ Sevimlilarga qo'shildi!", show_alert=False)
-            else:
-                await callback.answer("Allaqachon sevimlilarda", show_alert=False)
+            current_fav = True
+            msg = "❤️ Sevimlilarga qo'shildi!" if added else "Allaqachon sevimlilarda"
+            
+        await callback.answer(msg)
+        
+        # Update button to show current state
+        heart = "❤️" if current_fav else "🤍"
+        
+        old_markup = callback.message.reply_markup
+        new_keyboard = []
+        for row in old_markup.inline_keyboard:
+            new_row = []
+            for btn in row:
+                if btn.callback_data == f"car:favorite:{car_id}":
+                    new_row.append(InlineKeyboardButton(text=heart, callback_data=btn.callback_data))
+                else:
+                    new_row.append(btn)
+            new_keyboard.append(new_row)
+            
+        try:
+            await callback.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(inline_keyboard=new_keyboard))
+        except Exception:
+            pass  # Markup might be same or message deleted
 
 
 @router.message(F.text == "❤️ Sevimlilar")

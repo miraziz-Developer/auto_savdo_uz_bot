@@ -105,11 +105,21 @@ async def send_push_notification(user_id: int, cars: List):
 async def notify_admin_about_good_deal(listing_data: Dict):
     """Adminlarga arzon variant haqida xabar"""
     try:
+        title = listing_data.get('title')
+        if not title:
+            # Fallback title if scraper couldn't find a proper title
+            brand = listing_data.get('brand') or "Avtomobil"
+            model = listing_data.get('model') or ""
+            title = f"{brand} {model}".strip()
+
+        price_val = listing_data.get('price', 0)
+        price_display = f"{price_val:,.0f} $" if price_val > 0 else "Kelishilgan"
+        
         text = (
             f"💰 <b>ARZON VARIANT TOPILDI!</b>\n"
             f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"🚗 <b>{listing_data.get('title', '')}</b>\n"
-            f"💵 Narxi: <b>{listing_data.get('price', 0):,.0f} $</b>\n"
+            f"🚗 <b>{title}</b>\n"
+            f"💵 Narxi: <b>{price_display}</b>\n"
             f"🌐 Manba: <b>{listing_data.get('source', '').upper()}</b>\n\n"
             f"🔥 <i>Bu narx bozor qiymatidan sezilarli past!</i>"
         )
@@ -174,7 +184,9 @@ async def publish_scraped_deal(listing_data: Dict):
         deal_tag = ""
         profit_text = ""
         
-        if is_price_drop:
+        if price == 0:
+            price_display = "<b>Kelishilgan</b>"
+        elif is_price_drop:
             old_price = listing_data.get('old_price', 0)
             diff = listing_data.get('price_diff', 0)
             deal_tag = f"📉 <b>NARX TUSHDI! (-{diff:,.0f} $)</b>\n"
@@ -226,6 +238,8 @@ async def publish_scraped_deal(listing_data: Dict):
             other = listing_data.get('cross_platform_source', 'Boshqa').upper()
             cross_platform = f"\n⚠️ <b>BU MOSHINA {other} DA HAM BOR!</b>\n"
         
+        mileage_display = f"{mileage} km" if mileage > 0 else "ko'rsatilmagan"
+
         text = (
             f"{deal_tag}"
             f"🚗 <b>YANGI TAKLIF</b> ({source})\n"
@@ -238,7 +252,7 @@ async def publish_scraped_deal(listing_data: Dict):
             f"📉 Raqobatchilar: <b>{comp_text}</b>\n"
             f"⏳ Sotilish tezligi: <b>{liquidity}</b>\n\n"
             f"📍 Joylashuv: <b>{location}</b>\n"
-            f"🛣 Probeg: <b>{mileage} km</b>\n"
+            f"🛣 Probeg: <b>{mileage_display}</b>\n"
             f"⚙️ Karobka: <b>{transmission}</b>\n"
             f"⛽ Yoqilg'i: <b>{fuel_type}</b>\n\n"
             f"{tags_text}\n\n"

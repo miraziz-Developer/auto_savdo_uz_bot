@@ -124,10 +124,11 @@ class PriceEstimator:
         price = car_data.get('price', 0)
         
         # 1. Price Check
-        if market_avg > 0 and price < (market_avg * 0.85):
-            score += 3
-        elif market_avg > 0 and price < (market_avg * 0.90):
-            score += 2 # Slightly good price
+        if market_avg > 0 and price > 0:
+            if price < (market_avg * 0.85):
+                score += 3
+            elif price < (market_avg * 0.90):
+                score += 2 # Slightly good price
             
         # 2. Condition / Keywords Check
         desc = (car_data.get('description') or "").lower()

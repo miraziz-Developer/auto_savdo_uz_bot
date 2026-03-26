@@ -1,60 +1,73 @@
 """
-Database connection and session management — Optimized for Free Tier
+Database connection and session management — Optimized v2
+Connection pooling, health checks, graceful error handling
 """
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy import event
 from loguru import logger
 
 from config import settings
 from database.models import Base
 
 
-# Create async engine — OPTIMIZED for Free Tier (512MB RAM)
+# ──────────────────────────────────────────────
+# ENGINE — connection pool sozlamalari
+# ──────────────────────────────────────────────
 engine = create_async_engine(
     settings.database_url,
     echo=False,
-    pool_size=3,           # Was 10 — 3 is enough for single-bot
-    max_overflow=2,        # Was 20 — minimal overflow
-    pool_recycle=1800,     # Recycle every 30 min (was 60 min)
-    pool_timeout=10,       # Timeout 10 sec (don't hang forever)
-    pool_pre_ping=True,    # Check connection health before use
+    # Pool: 1 bot uchun 3 ta ulanish yetarli
+    pool_size=3,
+    max_overflow=5,
+    pool_recycle=1800,       # 30 daqiqada bir yangilansin
+    pool_timeout=15,
+    pool_pre_ping=True,      # Har ulanish tekshirilsin
     connect_args={
-        "command_timeout": 10,      # Query timeout 10 sec
+        "command_timeout": 10,
         "server_settings": {
-            "statement_timeout": "15000",  # 15 sec max per statement
+            "statement_timeout":    "15000",  # 15 sek max
+            "lock_timeout":         "5000",   # 5 sek lock kutish
+            "idle_in_transaction_session_timeout": "30000",  # 30 sek
         }
     }
 )
 
-# Create session factory
+# ──────────────────────────────────────────────
+# SESSION FACTORY
+# ──────────────────────────────────────────────
 async_session_maker = async_sessionmaker(
     engine,
     class_=AsyncSession,
-    expire_on_commit=False,
+    expire_on_commit=False,   # commit'dan keyin ob'ektlar qayta yuklanmasin
+    autoflush=False,           # Manuel flush uchun
 )
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
-    """Get database session"""
+    """Get database session (dependency injection uchun)"""
     async with async_session_maker() as session:
         try:
             yield session
+        except Exception:
+            await session.rollback()
+            raise
         finally:
             await session.close()
 
 
 async def init_db():
-    """Initialize database - create all tables"""
+    """Initialize database — barcha jadvallarni yaratish"""
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-        logger.info("Database initialized successfully")
+        logger.info("✅ Database initialized successfully")
     except Exception as e:
-        logger.error(f"Error initializing database: {e}")
+        logger.error(f"❌ Error initializing database: {e}")
         raise
 
 
 async def close_db():
-    """Close database connections"""
+    """Close all database connections gracefully"""
     await engine.dispose()
     logger.info("Database connections closed")

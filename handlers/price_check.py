@@ -140,67 +140,99 @@ async def process_model(message: Message, state: FSMContext):
 
 @router.message(PriceCheckStates.waiting_for_year)
 async def process_year(message: Message, state: FSMContext):
-    # ... (existing code until AI fallback)
-    
-    # --- AI fallback ---
-    from utils.estimator import PriceEstimator
-    
-    if price_range['count'] == 0 and avg_price == 0:
-        # Fallback to AI Estimation (Theoretical)
-        # PriceEstimator class method and correct args
-        ai_res = PriceEstimator.estimate_price(brand, model, year, mileage=0, condition="good")
-        ai_price = ai_res['recommended']
-        avg_price = ai_price
-        
-        await message.answer(
-            f"📊 <b>{brand} {model} ({year})</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "⚠️ <b>Bozorda aniq e'lonlar kam.</b>\n"
-            "🤖 Sun'iy intellekt (AI) hisob-kitobiga ko'ra:\n\n"
-            f"💰 <b>Taxminiy narx: {ai_price:,.0f} $</b>\n"
-            "<i>(Bu nazariy narx, moshina holatiga qarab o'zgaradi)</i>",
-            parse_mode="HTML"
-        )
+    """Process year and show results"""
+    if message.text == "❌ Bekor qilish":
+        await state.clear()
+        await message.answer("❌ <b>Bekor qilindi</b>", reply_markup=main_menu_keyboard(), parse_mode="HTML")
         return
     
-    # Build beautiful report
-    text = f"📊 <b>BOZOR NARX TAHLILI</b>\n"
-    text += f"━━━━━━━━━━━━━━━━━━━━━━\n"
-    text += f"🚗 <b>{brand} {model} ({year})</b>\n\n"
+    if not message.text.isdigit():
+        return await message.answer("❌ Iltimos, yilni raqamda kiriting (masalan: 2020)")
     
-    if avg_price:
-        text += f"💰 <b>O'rtacha narx: {avg_price:,.0f} $</b>\n"
+    year = int(message.text)
+    data = await state.get_data()
+    brand = data['brand']
+    model = data['model']
     
-    if price_range['count'] > 0:
-        text += f"📉 Eng arzon: <b>{price_range['min_price']:,.0f} $</b>\n"
-        text += f"📈 Eng qimmat: <b>{price_range['max_price']:,.0f} $</b>\n"
-        text += f"📊 E'lonlar soni: <b>{price_range['count']} ta</b>\n"
+    msg = await message.answer("🔍 <b>Bozor tahlil qilinmoqda...</b>", parse_mode="HTML")
     
-    text += f"\n{liq['emoji']} Likvidlik: <b>{liq['level']} ({liq['time']})</b>\n"
-    
-    if competitors:
-        text += f"🏪 Raqobatchilar: <b>{competitors} ta</b>\n"
-    
-    # Price recommendations
-    if avg_price:
-        text += f"\n━━━━━━━━━━━━━━━━━━━━━━\n"
-        text += f"💡 <b>TAVSIYALAR:</b>\n\n"
+    async with async_session_maker() as session:
+        # Get real market data from DB
+        avg_price = await get_average_market_price(session, brand, model, year)
+        price_range = await get_price_range(session, brand, model, year)
+        competitors = await get_active_competitors_count(session, brand, model, year, price_range.get('min_price', 0))
         
-        buy_price = avg_price * 0.92  # 8% past
-        sell_price = avg_price * 1.03  # 3% yuqori
-        flip_profit = sell_price - buy_price
+        # Calculate liquidity based on model
+        model_key = model.lower()
+        liq = LIQUIDITY_MAP.get(model_key, {'time': '15-30 kun', 'emoji': '⭐', 'level': 'Sekin'})
         
-        text += f"🟢 Yaxshi olish narxi: <b>{buy_price:,.0f} $</b>\n"
-        text += f"🔵 Yaxshi sotish narxi: <b>{sell_price:,.0f} $</b>\n"
-        text += f"💵 Taxminiy foyda: <b>{flip_profit:,.0f} $</b>\n\n"
+        # --- AI fallback ---
+        from utils.estimator import PriceEstimator
         
-        if avg_price < 10000:
-            text += "📈 <i>Arzon segment — tez sotiladi, lekin foyda kam</i>\n"
-        elif avg_price < 20000:
-            text += "📈 <i>O'rta segment — eng ko'p talab, yaxshi foyda</i>\n"
-        else:
-            text += "📈 <i>Yuqori segment — uzoqroq sotiladi, lekin foyda yuqori</i>\n"
-    
-    text += f"\n⏰ <i>Ma'lumot: so'nggi 14 kun ichidagi e'lonlardan</i>"
-    
-    await message.answer(text, parse_mode="HTML")
+        if (not avg_price or avg_price == 0) and price_range['count'] == 0:
+            # Fallback to AI Estimation (Theoretical)
+            ai_res = PriceEstimator.estimate_price(brand, model, year, mileage=0, condition="good")
+            ai_price = ai_res['recommended']
+            avg_price = ai_price
+            
+            await message.answer(
+                f"📊 <b>{brand} {model} ({year})</b>\n"
+                "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                "⚠️ <b>Bozorda aniq e'lonlar kam.</b>\n"
+                "🤖 Sun'iy intellekt (AI) hisob-kitobiga ko'ra:\n\n"
+                f"💰 <b>Taxminiy narx: {ai_price:,.0f} $</b>\n"
+                "<i>(Bu nazariy narx, moshina holatiga qarab o'zgaradi)</i>",
+                parse_mode="HTML",
+                reply_markup=main_menu_keyboard()
+            )
+            await msg.delete()
+            await state.clear()
+            return
+        
+        # Build beautiful report
+        text = f"📊 <b>BOZOR NARX TAHLILI</b>\n"
+        text += f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        text += f"🚗 <b>{brand} {model} ({year})</b>\n\n"
+        
+        if avg_price:
+            text += f"💰 <b>O'rtacha narx: {avg_price:,.0f} $</b>\n"
+        
+        if price_range['count'] > 0:
+            text += f"📉 Eng arzon: <b>{price_range['min_price']:,.0f} $</b>\n"
+            text += f"📈 Eng qimmat: <b>{price_range['max_price']:,.0f} $</b>\n"
+            text += f"📊 E'lonlar soni: <b>{price_range['count']} ta</b>\n"
+        
+        text += f"\n{liq['emoji']} Likvidlik: <b>{liq['level']} ({liq['time']})</b>\n"
+        
+        if competitors:
+            text += f"🏪 Raqobatchilar: <b>{competitors} ta</b>\n"
+        
+        # Price recommendations
+        if avg_price:
+            text += f"\n━━━━━━━━━━━━━━━━━━━━━━\n"
+            text += f"💡 <b>TAVSIYALAR:</b>\n\n"
+            
+            buy_price = avg_price * 0.92  # 8% past
+            sell_price = avg_price * 1.03  # 3% yuqori
+            flip_profit = sell_price - buy_price
+            
+            text += f"🟢 Yaxshi olish narxi: <b>{buy_price:,.0f} $</b>\n"
+            text += f"🔵 Yaxshi sotish narxi: <b>{sell_price:,.0f} $</b>\n"
+            text += f"💵 Taxminiy foyda: <b>{flip_profit:,.0f} $</b>\n\n"
+            
+            if avg_price < 10000:
+                text += "📈 <i>Arzon segment — tez sotiladi, lekin foyda kam</i>\n"
+            elif avg_price < 20000:
+                text += "📈 <i>O'rta segment — eng ko'p talab, yaxshi foyda</i>\n"
+            else:
+                text += "📈 <i>Yuqori segment — uzoqroq sotiladi, lekin foyda yuqori</i>\n"
+        
+        text += f"\n⏰ <i>Ma'lumot: so'nggi 14 kun ichidagi e'lonlardan</i>"
+        
+        await message.answer(text, reply_markup=main_menu_keyboard(), parse_mode="HTML")
+        await state.clear()
+        try:
+            await msg.delete()
+        except Exception:
+            pass
+

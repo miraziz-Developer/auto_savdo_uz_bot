@@ -20,79 +20,7 @@ services:
     networks:
       - avtosavdo_network
 
-  # Redis Cache
-  redis:
-    image: redis:7-alpine
-    container_name: avtosavdo_redis
-    restart: unless-stopped
-    command: redis-server --appendonly yes
-    volumes:
-      - redis_data:/data
-    ports:
-      - "6380:6379"
-    healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - avtosavdo_network
-
-  # MinIO (S3 Storage)
-  minio:
-    image: minio/minio
-    container_name: avtosavdo_minio
-    restart: unless-stopped
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
-    volumes:
-      - minio_data:/data
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
-      interval: 30s
-      timeout: 20s
-      retries: 3
-    networks:
-      - avtosavdo_network
-
-  # Flower (Celery Monitoring)
-  flower:
-    image: mher/flower
-    container_name: avtosavdo_flower
-    restart: unless-stopped
-    environment:
-      CELERY_BROKER_URL: redis://redis:6379/1
-      FLOWER_PORT: 5555
-    ports:
-      - "5555:5555"
-    depends_on:
-      - redis
-    networks:
-      - avtosavdo_network
-
-  # PgAdmin (Database UI)
-  pgadmin:
-    image: dpage/pgadmin4
-    container_name: avtosavdo_pgadmin
-    restart: unless-stopped
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@avtosavdo.uz}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin123}
-    volumes:
-      - pgadmin_data:/var/lib/pgadmin
-    ports:
-      - "5050:80"
-    depends_on:
-      - postgres
-    networks:
-      - avtosavdo_network
-
-  # Telegram Bot
+  # Telegram Bot (Lite Mode — no Celery, no Redis, no Playwright)
   bot:
     build:
       context: .
@@ -104,76 +32,14 @@ services:
     environment:
       - DB_HOST=postgres
       - DB_PORT=5432
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - DB_PASSWORD=${DB_PASSWORD:-postgres123}
       - MPLCONFIGDIR=/tmp/matplotlib_cache
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     volumes:
-      - .:/app
       - ./logs:/app/logs
       - ./analytics/reports:/app/analytics/reports
-    networks:
-      - avtosavdo_network
-
-  # Celery Worker
-  celery_worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: avtosavdo_celery_worker
-    restart: unless-stopped
-    command: celery -A tasks.celery_tasks worker --loglevel=info
-    env_file:
-      - .env
-    environment:
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - CELERY_BROKER_URL=redis://redis:6379/1
-      - CELERY_RESULT_BACKEND=redis://redis:6379/2
-      - MPLCONFIGDIR=/tmp/matplotlib_cache
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    volumes:
-      - .:/app
-      - ./logs:/app/logs
-    networks:
-      - avtosavdo_network
-
-  # Celery Beat (Scheduler)
-  celery_beat:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: avtosavdo_celery_beat
-    restart: unless-stopped
-    command: celery -A tasks.celery_tasks beat --loglevel=info -s /tmp/celerybeat-schedule
-    env_file:
-      - .env
-    environment:
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - CELERY_BROKER_URL=redis://redis:6379/1
-      - CELERY_RESULT_BACKEND=redis://redis:6379/2
-      - MPLCONFIGDIR=/tmp/matplotlib_cache
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    volumes:
-      - .:/app
-      - ./logs:/app/logs
     networks:
       - avtosavdo_network
 
@@ -183,10 +49,4 @@ networks:
 
 volumes:
   postgres_data:
-    driver: local
-  redis_data:
-    driver: local
-  minio_data:
-    driver: local
-  pgadmin_data:
     driver: local

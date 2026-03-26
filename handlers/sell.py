@@ -14,7 +14,7 @@ from loguru import logger
 
 from states.sell import CarSellStates
 from config import settings
-from keyboards.user_keyboards import main_menu_keyboard
+from keyboards.user_keyboards import main_menu_keyboard, brands_keyboard
 
 router = Router()
 
@@ -87,15 +87,9 @@ async def process_successful_payment(message: Message, state: FSMContext):
         "Endi moshinangiz haqida ma'lumot kiriting.\n\n"
         "🏷 <b>Moshina brendini tanlang:</b>",
         parse_mode="HTML",
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard=[
-                [KeyboardButton(text="Chevrolet"), KeyboardButton(text="Hyundai")],
-                [KeyboardButton(text="Kia"), KeyboardButton(text="BYD")],
-                [KeyboardButton(text="Toyota"), KeyboardButton(text="Lada")],
-            ],
-            resize_keyboard=True
-        )
+        reply_markup=brands_keyboard()
     )
+
 
 
 @router.callback_query(F.data == "sell_avtosavdo")
@@ -108,9 +102,10 @@ async def sell_avtosavdo_start(callback: CallbackQuery, state: FSMContext):
         "Mutaxassislarimiz moshinangizni ko'rib chiqadi,\n"
         "sifatli rasm oladi va kanal orqali sotadi.\n\n"
         "Endi ma'lumotlarni to'ldiring:\n\n"
-        "🏷 <b>Moshina markasini yozing:</b>\n"
-        "<i>Masalan: Chevrolet, BMW, KIA</i>",
-        parse_mode="HTML"
+        "🏷 <b>Moshina markasini tanlang:</b>\n"
+        "<i>Yoki o'zingiz yozib yuboring (Chevrolet, BMW, ...)</i>",
+        parse_mode="HTML",
+        reply_markup=brands_keyboard()
     )
     await callback.answer()
 

@@ -1,40 +1,34 @@
-FROM python:3.9-slim
+FROM python:3.11-slim
 
-# Loglarni darhol ko'rsatish (Buffer qilmaslik)
+# Buffersiz loglar
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
 
-
-# Tizim va Redis o'rnatish
+# Tizim kutubxonalari
 RUN apt-get update && apt-get install -y \
-    redis-server \
-    supervisor \
     libpq-dev \
     gcc \
     curl \
-    wait-for-it \
     && rm -rf /var/lib/apt/lists/*
-
-# Playwright brauzerlari uchun kutubxonalar
-RUN pip install playwright && playwright install-deps
 
 WORKDIR /app
 
-# Talablar
+# Talablar fayli oldin ko'chiriladi
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-RUN playwright install chromium
 
-# Kodlarni ko'chirish
+# Pakletlarni o'rnatish + Playwright
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt && \
+    playwright install chromium && \
+    playwright install-deps chromium
+
+
+# Loyiha kodlari
 COPY . .
 
-# Konfiguratsiya fayli
-COPY supervisord.conf /etc/supervisord.conf
+# Loglar papkasi
+RUN mkdir -p /app/logs /app/analytics/reports
 
-# Portni ochish (Render 10000 kutadi)
-EXPOSE 10000
+# Bot ishga tushirish
+CMD ["python", "bot.py"]
 
-# Redis konfiguratsiyasi (bepul rejimda)
-RUN sed -i 's/daemonize yes/daemonize no/g' /etc/redis/redis.conf || true
-
-# Supervisord orqali hammasini boshlash
-CMD ["supervisord", "-c", "/etc/supervisord.conf"]
