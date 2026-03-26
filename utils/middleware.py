@@ -31,7 +31,7 @@ class BlockCheckMiddleware(BaseMiddleware):
             is_blocked = cached[0]
             if is_blocked:
                 if isinstance(event, Message):
-                    await event.answer("🚫 <b>Siz botdan bloklangansiz!</b>\nAdmin bilan bog'laning: @avtosavdo_admin", parse_mode="HTML")
+                    await event.answer("🚫 <b>Siz botdan bloklangansiz!</b>\nAdmin bilan bog'laning: @Real_Avto_Admin", parse_mode="HTML")
                 elif isinstance(event, CallbackQuery):
                     await event.answer("Siz bloklangansiz!", show_alert=True)
                 return
@@ -59,7 +59,7 @@ class BlockCheckMiddleware(BaseMiddleware):
 
             if is_blocked:
                 if isinstance(event, Message):
-                    await event.answer("🚫 <b>Siz botdan bloklangansiz!</b>\nAdmin bilan bog'laning: @avtosavdo_admin", parse_mode="HTML")
+                    await event.answer("🚫 <b>Siz botdan bloklangansiz!</b>\nAdmin bilan bog'laning: @Real_Avto_Admin", parse_mode="HTML")
                 elif isinstance(event, CallbackQuery):
                     await event.answer("Siz bloklangansiz!", show_alert=True)
                 return

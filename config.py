@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     scraped_deals_channel_id: str = Field(default="", alias="SCRAPED_DEALS_CHANNEL_ID")
     admin_cars_channel_id: str = Field(default="", alias="ADMIN_CARS_CHANNEL_ID")
     admin_group_id: str = Field(default="", alias="ADMIN_GROUP_ID")
+    admin_username: str = Field(default="@Real_Avto_Admin", alias="ADMIN_USERNAME")
     instagram_api_token: str = Field(default="", alias="INSTAGRAM_API_TOKEN")
     
     # Scraping

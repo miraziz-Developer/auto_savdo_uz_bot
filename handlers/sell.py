@@ -53,7 +53,7 @@ async def sell_ad_payment(callback: CallbackQuery, state: FSMContext, bot: Bot):
     if not settings.payment_provider_token:
         await callback.message.edit_text(
             "⚠️ <b>Uzr, to'lov tizimida texnik nosozlik</b>\n\n"
-            "Iltimos, admin bilan bog'laning: @avtosavdo_admin\n"
+            "Iltimos, admin bilan bog'laning: @Real_Avto_Admin\n"
             "Yoki «Avto Savdo orqali» usulini tanlang — u bepul!",
             parse_mode="HTML"
         )
@@ -512,7 +512,7 @@ async def process_phone(message: Message, state: FSMContext, bot: Bot):
         "E'loningiz holatini <b>📋 Mening arizalarim</b> bo'limida\n"
         "kuzatishingiz mumkin.\n\n"
         "⏰ O'rtacha javob vaqti: <b>1-2 soat</b>\n"
-        "📞 Savol bo'lsa: @avtosavdo_admin",
+        "📞 Savol bo'lsa: @Real_Avto_Admin",
         parse_mode="HTML",
         reply_markup=main_menu_keyboard()
     )

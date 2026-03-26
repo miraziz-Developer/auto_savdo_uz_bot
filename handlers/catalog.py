@@ -1032,7 +1032,7 @@ async def notify_matching_users(car_id: int):
                     f"💰 Narxi: <b>{car.price:,.0f} $</b>\n"
                     f"🛣 Probeg: <b>{car.mileage or 0:,} km</b>\n\n"
                     f"Sizning so'rovingiz #{request.id} ga mos keladi!\n\n"
-                    f"📞 Bog'lanish uchun: @avtosavdo_admin"
+                    f"📞 Bog'lanish uchun: @Real_Avto_Admin"
                 )
                 
                 # In production, use bot.send_message() with user_id
@@ -1226,7 +1226,7 @@ async def car_contact_handler(callback: CallbackQuery):
         "📞 <b>BOG'LANISH MA'LUMOTLARI</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n\n"
         "📱 Telefon: <b>+998 90 123 45 67</b>\n"
-        "💬 Telegram: @avtosavdo_admin\n\n"
+        "💬 Telegram: @Real_Avto_Admin\n\n"
         "⏰ Ish vaqti: <b>09:00 — 21:00</b> (har kuni)\n"
         "📍 Manzil: Toshkent shahri\n\n"
         "💡 <i>Moshina ID raqamini aytib, tezroq ma'lumot oling!</i>"

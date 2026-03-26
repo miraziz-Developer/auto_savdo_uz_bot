@@ -294,7 +294,7 @@ async def publish_admin_car(car_data: Dict):
             f"⚙️ Uzatma: <b>{car_data.get('transmission', 'N/A')}</b>\n\n"
             f"📝 <i>{car_data.get('description', '')}</i>\n\n"
             "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "📞 Bog'lanish: @avtosavdo_admin\n"
+            "📞 Bog'lanish: @Real_Avto_Admin\n"
             "🏢 #avtosavdo #premium"
         )
         

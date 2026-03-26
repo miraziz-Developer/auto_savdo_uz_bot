@@ -536,7 +536,7 @@ async def confirm_buy_request(callback: CallbackQuery, state: FSMContext):
     response += (
         "\n━━━━━━━━━━━━━━━━━━━━━━\n"
         "⏰ O'rtacha javob vaqti: <b>1-3 soat</b>\n"
-        "📞 Savol bo'lsa: @avtosavdo_admin"
+        "📞 Savol bo'lsa: @Real_Avto_Admin"
     )
     
     await callback.message.edit_text(response, parse_mode="HTML")

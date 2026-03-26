@@ -340,7 +340,7 @@ async def find_matching_subscriptions(session, car):
 │     ↓                                            │
 │  2. Bot admin kontaktlarini ko'rsatadi:         │
 │     📞 Telefon: +998 90 123 45 67               │
-│     📱 Telegram: @avtosavdo_admin               │
+│     📱 Telegram: @Real_Avto_Admin               │
 │     ⏰ Ish vaqti: 9:00-20:00                    │
 │     ↓                                            │
 │  3. Mijoz telefon qiladi yoki yozadi           │

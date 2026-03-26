@@ -87,7 +87,7 @@ async def cmd_start(message: Message, state: FSMContext):
             f"📉 <b>Arzon variantlar</b> — bozordan past narxdagi takliflar\n\n"
             f"🔔 <b>Obunalar</b> — yangi e'lonlardan darhol xabardor bo'ling\n\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"📞 Savol bo'lsa: @avtosavdo_admin\n"
+            f"📞 Savol bo'lsa: @Real_Avto_Admin\n"
             f"📍 Toshkent shahri"
         )
         await message.answer(text, reply_markup=main_menu_keyboard(), parse_mode="HTML")
@@ -141,7 +141,7 @@ async def cmd_help(message: Message):
         "real-time kuzatib boring.\n\n"
         
         "━━━━━━━━━━━━━━━━━━━━━━\n"
-        "📞 Bog'lanish: @avtosavdo_admin\n"
+        "📞 Bog'lanish: @Real_Avto_Admin\n"
         "⏰ Ish vaqti: 09:00 — 21:00 (har kuni)\n"
         "📍 Toshkent shahri"
     )
