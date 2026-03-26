@@ -18,7 +18,7 @@ router = Router()
 # Konkurs kanallari (Agar .env da yo'q bo'lsa, tahrirlashingiz mumkin)
 KONKURS_CHANNEL_USERNAME = "@REAL_AVTO_ARZON"
 KONKURS_CHANNEL_LINK = "https://t.me/REAL_AVTO_ARZON"
-INSTAGRAM_LINK = "https://instagram.com/avtosavdo_uz"
+INSTAGRAM_LINK = "https://www.instagram.com/real_avto_arzon/"
 
 
 def konkurs_subscription_keyboard() -> InlineKeyboardMarkup:
