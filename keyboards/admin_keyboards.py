@@ -13,6 +13,7 @@ def admin_main_menu_keyboard() -> ReplyKeyboardMarkup:
     """Admin asosiy menyusi"""
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
+            [KeyboardButton(text="🎁 Konkurs (G'olib bo'ling!)")],
             [KeyboardButton(text="➕ Moshina qo'shish (ADMIN)"), KeyboardButton(text="📋 Pipeline")],
             [KeyboardButton(text="📊 CRM Dashboard"), KeyboardButton(text="🔥 Hot Leads")],
             [KeyboardButton(text="📊 Statistika"), KeyboardButton(text="🖥️ Tizim Monitoringi")],
@@ -61,6 +62,22 @@ def inquiry_management_keyboard(inquiry_id: int) -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton(text="📞 Qo'ng'iroq", callback_data=f"inquiry:call:{inquiry_id}"),
             InlineKeyboardButton(text="🏗 Katalogga o'tkazish", callback_data=f"inquiry_complete:{inquiry_id}")
+        ]
+    ])
+
+
+def konkurs_management_keyboard() -> InlineKeyboardMarkup:
+    """Konkurs boshqaruv tugmalari (ADMIN)"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="👥 Ishtirokchilar ro'yxati", callback_data="admin:konkurs:list"),
+            InlineKeyboardButton(text="📊 Liderlar (Post)", callback_data="admin:konkurs:leaderboard")
+        ],
+        [
+            InlineKeyboardButton(text="🎲 Random G'olib (3 ta)", callback_data="admin:konkurs:random_winner")
+        ],
+        [
+            InlineKeyboardButton(text="📢 Kanalga xabar yuborish", callback_data="admin:konkurs:broadcast")
         ]
     ])
 

@@ -10,7 +10,7 @@ from loguru import logger
 
 from database.models import (
     User, Car, SoldCar, Subscription, Inquiry, ScrapedListing,
-    Favorite, Review, BuyRequest, FollowUp, ContactLog
+    Favorite, Review, BuyRequest, FollowUp, ContactLog, KonkursParticipant
 )
 
 from config import settings
@@ -1350,3 +1350,97 @@ async def get_admin_dashboard_stats(session: AsyncSession) -> dict:
         'sold_30d': sold_month_res.scalar_one_or_none() or 0,
         'profit_30d': float(profit_month_res.scalar_one_or_none() or 0),
     }
+
+# ====== KONKURS ======
+
+async def get_konkurs_participant(session: AsyncSession, telegram_id: int) -> Optional[KonkursParticipant]:
+    """Check if user is already participating in the konkurs using their Telegram ID"""
+    result = await session.execute(
+        select(KonkursParticipant)
+        .join(User, KonkursParticipant.user_id == User.id)
+        .where(User.telegram_id == telegram_id)
+    )
+    return result.scalar_one_or_none()
+
+async def register_konkurs_participant(session: AsyncSession, telegram_id: int, referrer_telegram_id: Optional[int] = None) -> KonkursParticipant:
+    """
+    Register a user to the konkurs and generate a unique ticket number.
+    Resolves telegram_id to internal user.id.
+    """
+    import random
+    import string
+    from sqlalchemy.orm import selectinload
+    
+    # 1. Resolve internal IDs
+    user_res = await session.execute(select(User).where(User.telegram_id == telegram_id))
+    user_obj = user_res.scalar_one_or_none()
+    if not user_obj:
+        return None # Should not happen as user is created on /start
+        
+    user_id = user_obj.id
+    referred_by_id = None
+    
+    if referrer_telegram_id and referrer_telegram_id != telegram_id:
+        referrer_res = await session.execute(select(User).where(User.telegram_id == referrer_telegram_id))
+        referrer_user = referrer_res.scalar_one_or_none()
+        if referrer_user:
+            referred_by_id = referrer_user.id
+
+    # 2. Generate unique ticket number
+    while True:
+        ticket = "AUTO" + "".join(random.choices(string.digits, k=6))
+        # Check if exists
+        check_res = await session.execute(
+            select(KonkursParticipant).where(KonkursParticipant.ticket_number == ticket)
+        )
+        if not check_res.scalar_one_or_none():
+            break
+            
+    # 3. Create participant
+    participant = KonkursParticipant(user_id=user_id, ticket_number=ticket, referred_by_id=referred_by_id)
+    session.add(participant)
+    
+    # 4. Increment referrer score
+    if referred_by_id:
+        # We need to find the referrer's KonkursParticipant entry
+        kp_referrer_res = await session.execute(
+            select(KonkursParticipant).where(KonkursParticipant.user_id == referred_by_id)
+        )
+        kp_referrer = kp_referrer_res.scalar_one_or_none()
+        if kp_referrer:
+            kp_referrer.score += 1
+
+    await session.commit()
+    await session.refresh(participant)
+    return participant
+
+async def get_konkurs_rank(session: AsyncSession, score: int) -> int:
+    """Calculate the rank of a participant based on their score"""
+    result = await session.execute(
+        select(func.count(KonkursParticipant.id)).where(KonkursParticipant.score > score)
+    )
+    # The rank is the number of people with a strictly higher score + 1
+    higher_scores_count = result.scalar_one_or_none() or 0
+    return higher_scores_count + 1
+
+async def get_konkurs_leaderboard(session: AsyncSession, limit: int = 10) -> List[KonkursParticipant]:
+    """Get Top Participants for Konkurs by score, joining with User for names"""
+    from sqlalchemy.orm import joinedload
+    result = await session.execute(
+        select(KonkursParticipant)
+        .options(joinedload(KonkursParticipant.user))
+        .order_by(KonkursParticipant.score.desc())
+        .limit(limit)
+    )
+    return list(result.scalars().all())
+
+async def get_random_konkurs_winners(session: AsyncSession, limit: int = 3) -> List[KonkursParticipant]:
+    """Pick random winners from all participants"""
+    from sqlalchemy.orm import joinedload
+    result = await session.execute(
+        select(KonkursParticipant)
+        .options(joinedload(KonkursParticipant.user))
+        .order_by(func.random())
+        .limit(limit)
+    )
+    return list(result.scalars().all())

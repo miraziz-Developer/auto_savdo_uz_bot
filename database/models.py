@@ -328,3 +328,18 @@ class ContactLog(Base):
     notes: Mapped[Optional[str]] = mapped_column(Text)
     result: Mapped[Optional[str]] = mapped_column(String(100))  # interested, not_interested, callback, deal_made
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class KonkursParticipant(Base):
+    """Konkurs ishtirokchilari jadvali"""
+    __tablename__ = "konkurs_participants"
+    
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), unique=True)
+    ticket_number: Mapped[str] = mapped_column(String(50), unique=True)
+    referred_by_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
+    score: Mapped[int] = mapped_column(Integer, default=0)
+    registered_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(foreign_keys=[user_id])
+    referrer: Mapped[Optional["User"]] = relationship(foreign_keys=[referred_by_id])

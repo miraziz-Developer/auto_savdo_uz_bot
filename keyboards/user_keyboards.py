@@ -13,6 +13,7 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
     """Asosiy menyu — optimallashgan v3"""
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
+            [KeyboardButton(text="🎁 Konkurs (G'olib bo'ling!)")],
             [KeyboardButton(text="🚗 Moshina sotib olish"), KeyboardButton(text="➕ E'lon berish")],
             [KeyboardButton(text="💰 Narxni baholash"), KeyboardButton(text="🔍 Arzon variantlar")],
             [KeyboardButton(text="📊 Obunalar"), KeyboardButton(text="❤️ Sevimlilar")],

@@ -20,8 +20,18 @@ router = Router()
 
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
-    """Start command — Botga kirish"""
+    """Start command — Botga kirish/ Referral saqlash"""
     await state.clear()
+    
+    parts = message.text.split(" ")
+    if len(parts) > 1:
+        payload = parts[1]
+        if payload.startswith("ref_"):
+            try:
+                referrer_id = int(payload.split("_")[1])
+                await state.update_data(referred_by_id=referrer_id)
+            except ValueError:
+                pass
     
     async with async_session_maker() as session:
         user = await get_or_create_user(

@@ -17,7 +17,7 @@ from database.database import init_db, close_db
 from handlers import (
     common, catalog, subscriptions, admin, favorites,
     reviews, crm, gallery, sell, analytics,
-    buy, price_check, pipeline
+    buy, price_check, pipeline, konkurs
 )
 from utils.notifications import set_bot_instance
 from utils.followup import process_pending_followups
@@ -135,6 +135,7 @@ async def main():
     # ── Router'larni tartib bilan ro'yxatga olish ──
     # MUHIM: common.router birinchi o'rinda bo'lishi kerak (/start har qanday holatda ishlashi uchun)
     dp.include_router(common.router)      # Common eng yuqorida!
+    dp.include_router(konkurs.router)     # Konkurs button handler
     dp.include_router(admin.router)       # Admin 
     dp.include_router(buy.router)
     dp.include_router(price_check.router)
@@ -171,10 +172,20 @@ async def main():
         except Exception as e:
             logger.error(f"Scraper error: {e}")
 
+    async def run_konkurs_leaderboard():
+        """Top 10 Liderlar e'loni — har 6 soatda"""
+        try:
+            from handlers.konkurs import post_konkurs_leaderboard
+            await post_konkurs_leaderboard(bot)
+            logger.info("Konkurs Leaderboard posted to channel")
+        except Exception as e:
+            logger.error(f"Konkurs Leaderboard error: {e}")
+
     scheduler.add_job(run_followups, 'interval', minutes=10, id='followups', misfire_grace_time=60)
     scheduler.add_job(run_scraper, 'interval', minutes=60, id='scraper', misfire_grace_time=300)
+    scheduler.add_job(run_konkurs_leaderboard, 'interval', hours=6, id='konkurs', misfire_grace_time=600)
     scheduler.start()
-    logger.info("⏰ Scheduler started (follow-ups 10m, scraper 60m)")
+    logger.info("⏰ Scheduler started (follow-ups 10m, scraper 60m, konkurs 6h)")
 
     # ── SIGTERM xavfsiz o'chirish ──
     loop = asyncio.get_event_loop()
